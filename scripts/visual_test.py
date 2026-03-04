@@ -1,11 +1,19 @@
-"""Take full-page screenshots of every UI route for visual review.
+"""Take full-page screenshots of every UI route and interactive state.
 
 Starts the FastAPI app against the PostgreSQL database configured in .env,
 launches headless Chrome via Selenium, and saves PNGs to /tmp.
 
 The Tailwind Play CDN <script> tag is blocked via CDP and replaced with
-pre-compiled Tailwind CSS injected into each page after load. The CSS is
-compiled from the project templates using the Tailwind CLI.
+pre-compiled Tailwind CSS injected into each page. The CSS is compiled
+from the project templates using the Tailwind CLI.
+
+Captures:
+    - Leaderboard table with all reps
+    - Click-through from leaderboard to each rep detail page
+    - Expanded <details> elements showing email body and scorer notes
+    - Back-to-leaderboard navigation
+    - Settings page with form values and operations panel
+    - Nav bar link navigation between pages
 
 Prerequisites:
     - PostgreSQL running with migrations applied and seed data loaded
@@ -30,6 +38,7 @@ import uvicorn
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 
 from app.main import app
 
@@ -51,6 +60,30 @@ def _compile_tailwind():
 
 def _run_app_server():
     uvicorn.run(app, host="127.0.0.1", port=APP_PORT, log_level="error")
+
+
+def _inject_tailwind(driver, tailwind_css):
+    """Inject compiled Tailwind CSS if not already present."""
+    driver.execute_script("""
+    if (!document.getElementById('tw-injected')) {
+        var style = document.createElement('style');
+        style.id = 'tw-injected';
+        style.textContent = arguments[0];
+        document.head.appendChild(style);
+    }
+    """, tailwind_css)
+
+
+def _screenshot(driver, tailwind_css, name):
+    """Inject Tailwind CSS, resize to full page height, and screenshot."""
+    _inject_tailwind(driver, tailwind_css)
+    time.sleep(1)
+    total_height = driver.execute_script("return document.body.scrollHeight")
+    driver.set_window_size(1440, max(900, total_height + 200))
+    time.sleep(0.5)
+    path = f"/tmp/{name}.png"
+    driver.save_screenshot(path)
+    print(f"    saved {path}")
 
 
 def _take_screenshots():
@@ -76,31 +109,81 @@ def _take_screenshots():
     with open(TAILWIND_CSS_CACHE) as f:
         tailwind_css = f.read()
 
-    # Inject compiled CSS as a <style> element to replace the blocked CDN.
-    inject_css = """
-    var style = document.createElement('style');
-    style.textContent = arguments[0];
-    document.head.appendChild(style);
-    """
+    # ── 1. Leaderboard ──────────────────────────────────────────────────
+    print("  1. Leaderboard")
+    driver.get(f"{BASE}/")
+    time.sleep(1)
+    _screenshot(driver, tailwind_css, "01_leaderboard")
 
-    urls = {
-        "leaderboard": f"{BASE}/",
-        "rep_detail": f"{BASE}/reps/inderpalgill@nativecampusadvertising.com",
-        "settings": f"{BASE}/settings",
-    }
+    # ── 2. Click first rep link -> rep detail ────────────────────────────
+    print("  2. Click first rep -> rep detail")
+    first_rep_link = driver.find_element(By.CSS_SELECTOR, "tbody a.text-blue-600")
+    first_rep_name = first_rep_link.text
+    first_rep_link.click()
+    time.sleep(1)
+    _screenshot(driver, tailwind_css, "02_rep_detail_via_click")
 
-    for name, url in urls.items():
-        print(f"  loading {name}...")
-        driver.get(url)
+    # ── 3. Expand all email <details> to show body and notes ─────────────
+    print("  3. Expand email details (body + notes)")
+    for summary in driver.find_elements(By.CSS_SELECTOR, "details summary"):
+        summary.click()
+        time.sleep(0.3)
+    _screenshot(driver, tailwind_css, "03_rep_detail_expanded")
+
+    # ── 4. Click "Back to Leaderboard" ───────────────────────────────────
+    print("  4. Click back to leaderboard link")
+    back_link = driver.find_element(By.LINK_TEXT, "← Back to Leaderboard")
+    back_link.click()
+    time.sleep(1)
+    _screenshot(driver, tailwind_css, "04_leaderboard_via_back")
+
+    # ── 5. Click a different rep ─────────────────────────────────────────
+    print("  5. Click different rep")
+    rep_links = driver.find_elements(By.CSS_SELECTOR, "tbody a.text-blue-600")
+    for link in rep_links:
+        if link.text != first_rep_name:
+            link.click()
+            break
+    time.sleep(1)
+    _screenshot(driver, tailwind_css, "05_rep_detail_second_rep")
+
+    # Expand details on second rep
+    for summary in driver.find_elements(By.CSS_SELECTOR, "details summary"):
+        summary.click()
+        time.sleep(0.3)
+    _screenshot(driver, tailwind_css, "06_rep_detail_second_expanded")
+
+    # ── 6. Navigate to Settings via nav link ─────────────────────────────
+    print("  6. Click Settings nav link")
+    driver.find_element(By.LINK_TEXT, "Settings").click()
+    time.sleep(2)  # extra time for loadJobs() JS fetch
+    _screenshot(driver, tailwind_css, "07_settings")
+
+    # ── 7. Navigate back to Leaderboard via nav link ─────────────────────
+    print("  7. Click Leaderboard nav link")
+    driver.find_element(By.LINK_TEXT, "Leaderboard").click()
+    time.sleep(1)
+    _screenshot(driver, tailwind_css, "08_leaderboard_via_nav")
+
+    # ── 8. Direct URL to every rep detail, with expanded emails ──────────
+    rep_emails = [
+        "sheraazahmed@native.fm",
+        "kieranberrycampbell@nativecampusadvertising.com",
+        "inderpalgill@nativecampusadvertising.com",
+        "setaitarokodrava@nativecampusadvertising.com",
+    ]
+    for i, rep_email in enumerate(rep_emails):
+        short = rep_email.split("@")[0]
+        print(f"  {9 + i}. Rep detail: {short}")
+        driver.get(f"{BASE}/reps/{rep_email}")
         time.sleep(1)
-        driver.execute_script(inject_css, tailwind_css)
-        time.sleep(1)
-        total_height = driver.execute_script("return document.body.scrollHeight")
-        driver.set_window_size(1440, max(900, total_height + 200))
+        _inject_tailwind(driver, tailwind_css)
         time.sleep(0.5)
-        path = f"/tmp/{name}.png"
-        driver.save_screenshot(path)
-        print(f"  saved {path}")
+        # Expand all email details
+        for summary in driver.find_elements(By.CSS_SELECTOR, "details summary"):
+            summary.click()
+            time.sleep(0.3)
+        _screenshot(driver, tailwind_css, f"{9 + i:02d}_rep_{short}")
 
     driver.quit()
 
