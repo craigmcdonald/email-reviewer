@@ -145,6 +145,35 @@ class TestFallbackToBackgroundTasks:
         mock_run.assert_called_once()
 
 
+class TestRedisValidation:
+    @patch("app.routers.operations.validate_redis")
+    async def test_returns_503_when_redis_configured_but_unreachable(
+        self, mock_validate, client
+    ):
+        mock_validate.return_value = "Redis is not reachable"
+        resp = await client.post("/api/operations/fetch")
+        assert resp.status_code == 503
+        assert "Redis" in resp.json()["detail"]
+
+    @patch("app.routers.operations.validate_redis")
+    async def test_returns_503_for_all_operation_types(
+        self, mock_validate, client
+    ):
+        mock_validate.return_value = "No workers listening"
+        for op in ["fetch", "score", "rescore", "export"]:
+            resp = await client.post(f"/api/operations/{op}")
+            assert resp.status_code == 503, f"{op} should return 503"
+
+    @patch("app.routers.operations.validate_redis")
+    async def test_no_job_created_when_redis_validation_fails(
+        self, mock_validate, client
+    ):
+        mock_validate.return_value = "Redis is not reachable"
+        await client.post("/api/operations/fetch")
+        resp = await client.get("/api/operations/jobs")
+        assert resp.json() == []
+
+
 class TestFetchWithParams:
     @patch("app.routers.operations.run_fetch_job", new_callable=AsyncMock)
     async def test_fetch_no_body_still_works(self, mock_run, client):
