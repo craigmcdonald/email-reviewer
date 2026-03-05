@@ -74,10 +74,10 @@
         <h1 class="text-2xl font-bold text-gray-900 mb-6">Operations</h1>
         <div class="space-y-4 bg-white shadow rounded-lg p-6">
             <div class="flex items-center justify-between">
-                <div>
+                <div class="min-w-0">
                     <h3 class="text-sm font-medium text-gray-900">Fetch Emails</h3>
                     <p class="text-xs text-gray-500">Fetch from HubSpot.</p>
-                    <label class="mt-1 flex items-center gap-1.5 cursor-pointer">
+                    <label class="mt-1 inline-flex items-center gap-1.5 cursor-pointer">
                         <input type="checkbox" id="fetch_auto_score"
                                {% if settings.auto_score_after_fetch %}checked{% endif %}
                                class="h-3.5 w-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500">
@@ -85,7 +85,7 @@
                     </label>
                 </div>
                 <button onclick="startOperation('fetch')"
-                        class="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Fetch</button>
+                        class="shrink-0 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Fetch</button>
             </div>
             <div class="flex items-center justify-between">
                 <div>
@@ -149,12 +149,16 @@ async function startOperation(type) {
         opts.headers = { 'Content-Type': 'application/json' };
         opts.body = JSON.stringify(body);
     }
-    const resp = await fetch(`/api/operations/${type}`, opts);
-    if (resp.ok) {
-        loadJobs();
-    } else {
-        const err = await resp.json();
-        alert(err.detail || 'Operation failed');
+    try {
+        const resp = await fetch(`/api/operations/${type}`, opts);
+        if (resp.ok) {
+            loadJobs();
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            alert(err.detail || 'Operation failed');
+        }
+    } catch (e) {
+        alert('Request failed: ' + e.message);
     }
 }
 
@@ -181,8 +185,13 @@ function formatSummary(summary) {
 }
 
 async function loadJobs() {
-    const resp = await fetch('/api/operations/jobs');
-    const jobs = await resp.json();
+    let resp, jobs;
+    try {
+        resp = await fetch('/api/operations/jobs');
+        jobs = await resp.json();
+    } catch {
+        return;
+    }
     const container = document.getElementById('jobs-list');
     if (!jobs.length) {
         container.innerHTML = '<p class="text-sm text-gray-500">No jobs yet.</p>';
