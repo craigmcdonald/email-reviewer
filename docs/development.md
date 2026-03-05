@@ -11,7 +11,7 @@
 1. Clone the repository and install dependencies:
 
 ```bash
-git clone <repo-url>
+git clone git@github.com:nativecampus/email-reviewer.git
 cd email-reviewer
 pipenv install --dev
 ```
