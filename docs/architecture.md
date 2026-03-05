@@ -133,9 +133,9 @@ Managed by Alembic with async support. The `alembic/env.py` file converts Postgr
 
 `app/services/fetcher.py` ingests outgoing sales emails from the HubSpot CRM v3 search API. The entry point is `fetch_and_store(session, access_token, company_domains, ...)`, which:
 
-1. Calls `fetch_emails_from_hubspot()` to paginate through all HubSpot search results with retry logic (exponential backoff on errors, respects `Retry-After` on 429s).
+1. Calls `fetch_emails_from_hubspot()` to paginate through HubSpot search results with retry logic (exponential backoff on errors, respects `Retry-After` on 429s). When `max_count` is set, passes `max_results=int(max_count * 1.5)` to stop pagination early — the 1.5x multiplier accounts for non-outgoing emails that will be filtered out. HubSpot's search API has a 10,000 result paging limit; when hit, the fetcher automatically subdivides the date range into halves and fetches each recursively, deduplicating by HubSpot ID at the boundary.
 2. Calls `filter_outgoing_emails()` to keep only emails with direction EMAIL or FORWARDED_EMAIL sent from a company domain.
-3. Applies `max_count` (if provided) to the filtered list, limiting stored emails rather than raw API results.
+3. Applies `max_count` (if provided) to the filtered list, limiting stored emails.
 4. Calls `upsert_emails_to_db()` to upsert on `hubspot_id` and auto-create Rep records for new sender addresses. Parses `hs_timestamp` from HubSpot into the `timestamp` column.
 
 Returns the number of emails stored.

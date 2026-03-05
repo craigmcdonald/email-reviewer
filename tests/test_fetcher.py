@@ -226,6 +226,30 @@ class TestFetchEmailsFromHubspot:
 
     @patch("app.services.fetcher.requests.post")
     @patch("app.services.fetcher.time.sleep")
+    def test_subdivides_when_hitting_10000_limit(self, mock_sleep, mock_post):
+        from datetime import datetime
+
+        # First call for full range hits 10K limit
+        full_range_page = MagicMock(status_code=200)
+        full_range_page.json.return_value = make_hubspot_response(
+            [OUTGOING_SALES_EMAIL], total=15000, after="10000"
+        )
+        # Subdivision calls return smaller result sets
+        half_page = MagicMock(status_code=200)
+        half_page.json.return_value = make_hubspot_response(
+            [OUTGOING_SALES_EMAIL], total=100
+        )
+        mock_post.side_effect = [full_range_page, half_page, half_page]
+
+        start = datetime(2026, 1, 1)
+        end = datetime(2026, 3, 1)
+        result = fetch_emails_from_hubspot("token", start_date=start, end_date=end)
+        # Should have fetched subdivision ranges after hitting limit
+        assert mock_post.call_count == 3
+        assert len(result) >= 1
+
+    @patch("app.services.fetcher.requests.post")
+    @patch("app.services.fetcher.time.sleep")
     def test_raises_on_retry_exhaustion(self, mock_sleep, mock_post):
         resp = MagicMock(status_code=401)
         resp.text = "Unauthorized"
