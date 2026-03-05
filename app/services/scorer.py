@@ -2,9 +2,10 @@
 
 import asyncio
 import json
+import logging
 from datetime import datetime
 
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, RateLimitError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -12,6 +13,8 @@ from sqlalchemy.orm import joinedload
 from app.models.email import Email
 from app.models.score import Score
 from app.schemas.score import ScoringResult
+
+logger = logging.getLogger(__name__)
 
 SCORING_SYSTEM_PROMPT = """You are an expert sales email evaluator. Score the following outgoing sales email on five dimensions, each from 1 (worst) to 10 (best):
 
@@ -33,6 +36,8 @@ Respond with ONLY a JSON object in this exact format, no other text:
 
 MAX_BODY_LENGTH = 4000
 MIN_WORD_COUNT = 20
+MAX_RATE_LIMIT_RETRIES = 5
+RATE_LIMIT_BASE_DELAY = 10
 
 
 def _build_user_message(email: Email) -> str:
@@ -58,18 +63,18 @@ def _build_user_message(email: Email) -> str:
     )
 
 
-async def _score_single_email(
-    client: AsyncAnthropic, email: Email, semaphore: asyncio.Semaphore
-) -> ScoringResult | None:
-    """Call Claude to score one email. Retry once on parse failure.
+async def _call_claude_with_retry(
+    client: AsyncAnthropic, user_message: str
+) -> tuple[object, dict]:
+    """Call Claude API with rate limit retry and exponential backoff.
 
-    Returns a ScoringResult on success or None if both attempts fail.
+    Returns (response, token_totals). Raises RateLimitError if all retries
+    are exhausted.
     """
-    user_message = _build_user_message(email)
     total_tokens = {"input": 0, "output": 0}
 
-    async with semaphore:
-        for _attempt in range(2):
+    for attempt in range(MAX_RATE_LIMIT_RETRIES):
+        try:
             response = await client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=300,
@@ -78,6 +83,39 @@ async def _score_single_email(
             )
             total_tokens["input"] += response.usage.input_tokens
             total_tokens["output"] += response.usage.output_tokens
+            return response, total_tokens
+        except RateLimitError:
+            if attempt == MAX_RATE_LIMIT_RETRIES - 1:
+                raise
+            delay = RATE_LIMIT_BASE_DELAY * (2 ** attempt)
+            logger.warning(
+                "Rate limited by Claude API, retrying in %ds (attempt %d/%d)",
+                delay, attempt + 1, MAX_RATE_LIMIT_RETRIES,
+            )
+            await asyncio.sleep(delay)
+
+    # Unreachable, but keeps the type checker happy
+    raise RateLimitError(message="Rate limit retries exhausted", response=None, body=None)
+
+
+async def _score_single_email(
+    client: AsyncAnthropic, email: Email, semaphore: asyncio.Semaphore
+) -> ScoringResult | None:
+    """Call Claude to score one email. Retry once on parse failure.
+
+    Retries with exponential backoff on rate limit (429) errors.
+    Returns a ScoringResult on success or None if both parse attempts fail.
+    """
+    user_message = _build_user_message(email)
+
+    async with semaphore:
+        for _attempt in range(2):
+            try:
+                response, total_tokens = await _call_claude_with_retry(
+                    client, user_message
+                )
+            except RateLimitError:
+                return None
 
             try:
                 raw = json.loads(response.content[0].text)

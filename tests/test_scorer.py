@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from anthropic import RateLimitError
 from sqlalchemy import select
 
 from app.models.email import Email
@@ -120,6 +121,53 @@ class TestScoreSingleEmail:
 
         assert result is None
         assert mock_client.messages.create.call_count == 2
+
+    @patch("app.services.scorer.asyncio.sleep", new_callable=AsyncMock)
+    async def test_retries_on_rate_limit_then_succeeds(self, mock_sleep):
+        valid_json = json.dumps({
+            "personalisation": 7,
+            "clarity": 8,
+            "value_proposition": 6,
+            "cta": 5,
+            "overall": 7,
+            "notes": "Good email.",
+        })
+        valid_message = MagicMock()
+        valid_message.content = [MagicMock(text=valid_json)]
+        valid_message.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(
+            side_effect=[
+                RateLimitError(message="rate limited", response=MagicMock(status_code=429, headers={}), body=None),
+                valid_message,
+            ]
+        )
+
+        email = Email(id=4, from_email="a@b.com", body_text="Test body content")
+        semaphore = asyncio.Semaphore(5)
+
+        result = await _score_single_email(mock_client, email, semaphore)
+
+        assert result is not None
+        assert result.overall == 7
+        mock_sleep.assert_called_once()
+
+    @patch("app.services.scorer.asyncio.sleep", new_callable=AsyncMock)
+    async def test_returns_none_after_all_rate_limit_retries_exhausted(self, mock_sleep):
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(
+            side_effect=RateLimitError(
+                message="rate limited", response=MagicMock(status_code=429, headers={}), body=None
+            )
+        )
+
+        email = Email(id=5, from_email="a@b.com", body_text="Test body content")
+        semaphore = asyncio.Semaphore(5)
+
+        result = await _score_single_email(mock_client, email, semaphore)
+
+        assert result is None
 
 
 class TestScoreUnscoredEmails:

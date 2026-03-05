@@ -5,6 +5,8 @@ from sqlalchemy import select
 from app.models.email import Email
 from app.models.rep import Rep
 from app.services.fetcher import (
+    _parse_timestamp,
+    fetch_and_store,
     fetch_emails_from_hubspot,
     filter_outgoing_emails,
     upsert_emails_to_db,
@@ -156,24 +158,9 @@ class TestFetchEmailsFromHubspot:
         resp2.json.return_value = page2
         mock_post.side_effect = [resp1, resp2]
 
-        result = fetch_emails_from_hubspot("token", max_count=None)
+        result = fetch_emails_from_hubspot("token")
         assert len(result) == 4
         assert mock_post.call_count == 2
-
-    @patch("app.services.fetcher.requests.post")
-    def test_stops_at_max_count(self, mock_post):
-        page1 = make_hubspot_response(
-            [OUTGOING_SALES_EMAIL, NATIVE_FM_EMAIL],
-            total=4,
-            after="2",
-        )
-        resp1 = MagicMock(status_code=200)
-        resp1.json.return_value = page1
-        mock_post.side_effect = [resp1]
-
-        result = fetch_emails_from_hubspot("token", max_count=2)
-        assert len(result) == 2
-        assert mock_post.call_count == 1
 
     @patch("app.services.fetcher.requests.post")
     @patch("app.services.fetcher.time.sleep")
@@ -244,3 +231,90 @@ class TestFetchEmailsFromHubspot:
 
         result = fetch_emails_from_hubspot("token")
         assert result == []
+
+
+class TestParseTimestamp:
+    def test_parses_iso_timestamp_with_z_suffix(self):
+        from datetime import datetime
+
+        result = _parse_timestamp("2026-02-02T08:18:00.440Z")
+        assert result == datetime(2026, 2, 2, 8, 18, 0, 440000)
+
+    def test_parses_iso_timestamp_without_fractional_seconds(self):
+        from datetime import datetime
+
+        result = _parse_timestamp("2026-02-01T13:25:22Z")
+        assert result == datetime(2026, 2, 1, 13, 25, 22)
+
+    def test_returns_none_for_empty_string(self):
+        assert _parse_timestamp("") is None
+
+    def test_returns_none_for_none(self):
+        assert _parse_timestamp(None) is None
+
+    def test_returns_none_for_invalid_string(self):
+        assert _parse_timestamp("not-a-date") is None
+
+
+class TestUpsertTimestamp:
+    async def test_stores_parsed_timestamp(self, db):
+        count = await upsert_emails_to_db(db, [OUTGOING_SALES_EMAIL])
+        assert count == 1
+
+        result = await db.execute(select(Email))
+        row = result.scalar_one()
+        assert row.timestamp is not None
+        assert row.timestamp.year == 2026
+        assert row.timestamp.month == 2
+        assert row.timestamp.day == 2
+
+    async def test_updates_timestamp_on_upsert(self, db):
+        await upsert_emails_to_db(db, [OUTGOING_SALES_EMAIL])
+
+        updated = make_hubspot_email(
+            id=OUTGOING_SALES_EMAIL["id"],
+            hs_timestamp="2026-03-15T10:00:00Z",
+        )
+        await upsert_emails_to_db(db, [updated])
+
+        result = await db.execute(select(Email))
+        row = result.scalar_one()
+        assert row.timestamp.month == 3
+        assert row.timestamp.day == 15
+
+
+class TestFetchAndStoreMaxCount:
+    @patch("app.services.fetcher.requests.post")
+    async def test_max_count_limits_filtered_output(self, mock_post, db):
+        """max_count limits the number of filtered outgoing emails stored,
+        not the number of raw results fetched from HubSpot."""
+        # Return 4 outgoing + 2 incoming emails in one page
+        all_emails = [
+            make_hubspot_email(id="out-1", hs_email_direction="EMAIL",
+                               hs_email_from_email="rep1@nativecampusadvertising.com"),
+            make_hubspot_email(id="out-2", hs_email_direction="EMAIL",
+                               hs_email_from_email="rep2@nativecampusadvertising.com"),
+            make_hubspot_email(id="in-1", hs_email_direction="INCOMING_EMAIL",
+                               hs_email_from_email="external@gmail.com"),
+            make_hubspot_email(id="out-3", hs_email_direction="EMAIL",
+                               hs_email_from_email="rep3@nativecampusadvertising.com"),
+            make_hubspot_email(id="in-2", hs_email_direction="INCOMING_EMAIL",
+                               hs_email_from_email="other@yahoo.com"),
+            make_hubspot_email(id="out-4", hs_email_direction="EMAIL",
+                               hs_email_from_email="rep4@nativecampusadvertising.com"),
+        ]
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = make_hubspot_response(all_emails, total=6)
+        mock_post.return_value = resp
+
+        stored = await fetch_and_store(
+            db,
+            access_token="token",
+            company_domains=["nativecampusadvertising.com"],
+            max_count=2,
+        )
+        assert stored == 2
+
+        result = await db.execute(select(Email))
+        rows = result.scalars().all()
+        assert len(rows) == 2

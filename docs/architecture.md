@@ -133,9 +133,10 @@ Managed by Alembic with async support. The `alembic/env.py` file converts Postgr
 
 `app/services/fetcher.py` ingests outgoing sales emails from the HubSpot CRM v3 search API. The entry point is `fetch_and_store(session, access_token, company_domains, ...)`, which:
 
-1. Calls `fetch_emails_from_hubspot()` to paginate through HubSpot search results with retry logic (exponential backoff on errors, respects `Retry-After` on 429s).
+1. Calls `fetch_emails_from_hubspot()` to paginate through all HubSpot search results with retry logic (exponential backoff on errors, respects `Retry-After` on 429s).
 2. Calls `filter_outgoing_emails()` to keep only emails with direction EMAIL or FORWARDED_EMAIL sent from a company domain.
-3. Calls `upsert_emails_to_db()` to upsert on `hubspot_id` and auto-create Rep records for new sender addresses.
+3. Applies `max_count` (if provided) to the filtered list, limiting stored emails rather than raw API results.
+4. Calls `upsert_emails_to_db()` to upsert on `hubspot_id` and auto-create Rep records for new sender addresses. Parses `hs_timestamp` from HubSpot into the `timestamp` column.
 
 Returns the number of emails stored.
 
@@ -146,8 +147,9 @@ Returns the number of emails stored.
 1. Queries emails with no matching score record (LEFT JOIN scores WHERE NULL).
 2. Auto-scores emails with empty or very short bodies (under 20 words) as all 1s without calling Claude. The score notes explain why.
 3. Sends remaining emails to Claude concurrently, capped by an asyncio semaphore (`batch_size`).
-4. Retries once on JSON parse failure. After two consecutive failures, writes a score row with `score_error=True`.
-5. Returns a summary dict with counts (`total_unscored`, `scored`, `auto_scored`, `errors`) and token usage.
+4. Retries with exponential backoff on rate limit (429) errors - up to 5 attempts with a base delay of 10 seconds.
+5. Retries once on JSON parse failure. After two consecutive failures, writes a score row with `score_error=True`.
+6. Returns a summary dict with counts (`total_unscored`, `scored`, `auto_scored`, `errors`) and token usage.
 
 `_build_user_message(email)` formats the email's From, To, Subject, Date, and Body fields into a prompt string. Body text is truncated to 4000 characters.
 
