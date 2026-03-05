@@ -5,7 +5,9 @@ Visual testing renders pages in a real browser and captures screenshots. Use it 
 ## Prerequisites
 
 - Google Chrome (`google-chrome-stable`)
-- Python packages: `selenium`
+- PostgreSQL running locally
+- Python packages: `selenium` (dev dependency)
+- Node packages: `tailwindcss`, `@tailwindcss/cli` (for CSS rebuild)
 
 ```bash
 pipenv install --dev selenium
@@ -21,83 +23,72 @@ sudo apt-get install -f -y
 
 ## How It Works
 
-1. Create an in-memory SQLite database with the JSONB compiler patch (same as the test suite).
-2. Insert seed data via ORM.
-3. Override `get_db` on the FastAPI app and start uvicorn in a daemon thread.
+1. Seed a PostgreSQL database with test data using sync SQLAlchemy (psycopg2).
+2. Start uvicorn as a subprocess (separate process, own event loop).
+3. Wait for the server to respond to HTTP requests.
 4. Launch headless Chrome via Selenium and navigate to each page.
 5. Resize the viewport to match the page's scroll height for a full-page capture.
 6. Save screenshots as PNG files.
 
+The script lives at `tests/visual/screenshot.py`.
+
 ## Database Setup
 
-The test suite's SQLite compatibility patches are required. Use `StaticPool` so all threads share one connection.
+Use a dedicated PostgreSQL database and sync SQLAlchemy for seeding. The app's async engine is created fresh in the uvicorn subprocess, avoiding cross-thread event loop issues.
 
 ```python
 import os
+
 os.environ["AUTH_ENABLED"] = "FALSE"
 os.environ["CURRENT_USER"] = "test"
+os.environ["DATABASE_URL"] = "postgresql+psycopg2://user:pass@localhost:5432/screenshot_test"
 
-from sqlalchemy import create_engine, event
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
+from app.models import Email, Job, Rep, Score, Settings  # noqa: F401
+from app.models.base import Base
 
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(element, compiler, **kw):
-    return "JSON"
-
-
-engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
+sync_engine = create_engine(
+    "postgresql+psycopg2://user:pass@localhost:5432/screenshot_test"
 )
 
+Base.metadata.drop_all(sync_engine)
+Base.metadata.create_all(sync_engine)
 
-@event.listens_for(engine, "connect")
-def _set_sqlite_pragma(dbapi_conn, connection_record):
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+with Session(sync_engine) as session:
+    session.add(Settings(id=1, ...))
+    session.commit()
+
+sync_engine.dispose()
 ```
 
-**Use `sqlite:///:memory:`** — not `sqlite:///file::memory:?cache=shared`. The latter creates a persistent file on disk named `file::memory:` and data accumulates across runs.
+**Use PostgreSQL, not SQLite.** The app's async engine uses asyncpg, which binds connections to the event loop that created them. Seeding with async SQLAlchemy in the main process and then running uvicorn in a subprocess (or thread) causes `RuntimeError: Task got Future attached to a different loop`. Sync psycopg2 for seeding avoids this entirely.
 
 ## Starting the Server
 
-Run uvicorn in a daemon thread so the script can drive Chrome in the main thread.
+Run uvicorn as a subprocess so it gets its own event loop. The `DATABASE_URL` environment variable is inherited.
 
 ```python
-import threading
+import subprocess
+import sys
 import time
-import uvicorn
+import urllib.request
 
-from app.database import get_db
-from app.main import app
+server = subprocess.Popen(
+    [sys.executable, "-m", "uvicorn", "app.main:app",
+     "--host", "127.0.0.1", "--port", str(PORT), "--log-level", "error"],
+    env=os.environ.copy(),
+)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def _override_get_db():
-    session = SessionLocal()
+# Wait for server
+for i in range(20):
+    time.sleep(0.5)
     try:
-        yield session
-    finally:
-        session.close()
-
-
-app.dependency_overrides[get_db] = _override_get_db
-
-
-def run_server():
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="error")
-
-
-server_thread = threading.Thread(target=run_server, daemon=True)
-server_thread.start()
-time.sleep(2)
+        urllib.request.urlopen(f"http://127.0.0.1:{PORT}/settings", timeout=2)
+        break
+    except Exception:
+        pass
 ```
 
 ## Taking Screenshots
@@ -117,8 +108,8 @@ chrome_options.binary_location = "/usr/bin/google-chrome-stable"
 driver = webdriver.Chrome(options=chrome_options)
 
 urls = {
-    "team": "http://127.0.0.1:8765/",
-    "settings": "http://127.0.0.1:8765/settings",
+    "team": "http://127.0.0.1:8769/",
+    "settings": "http://127.0.0.1:8769/settings",
 }
 
 for name, url in urls.items():
@@ -141,22 +132,12 @@ Key Selenium options:
 | `--disable-dev-shm-usage` | Prevents `/dev/shm` memory issues in Docker |
 | `--window-size=1440,900` | Set initial viewport; resized per page for full-height capture |
 
-## Seed Data
+## Rebuilding Tailwind CSS
 
-Capture the primary keys of seed entities before closing the session used for insertion. SQLAlchemy expires attributes on commit, so accessing `obj.id` after `session.close()` raises `DetachedInstanceError`.
+Templates use a pre-built Tailwind CSS file (`app/static/css/tailwind.css`) instead of the CDN. After changing Tailwind classes in templates, rebuild:
 
-```python
-rep = Rep(email="jane@example.com", display_name="Jane Doe")
-db.add(rep)
-db.commit()
-db.refresh(rep)
-
-# Capture before closing
-rep_email = rep.email
-db.close()
-
-# Use the captured value in URLs
-detail_url = f"http://127.0.0.1:8765/reps/{rep_email}"
+```bash
+npx @tailwindcss/cli -i app/static/css/input.css -o app/static/css/tailwind.css --minify
 ```
 
 ## Reviewing Screenshots
