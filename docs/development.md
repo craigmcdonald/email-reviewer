@@ -196,6 +196,7 @@ email-reviewer/
 │   ├── conftest.py           # Fixtures (db, client, factories)
 │   ├── fixtures/             # Test data builders
 │   │   └── hubspot.py        # HubSpot API response fixtures
+│   ├── test_database.py       # Database URL async driver conversion
 │   ├── test_main.py          # Health endpoint
 │   ├── test_enums.py         # Enum values
 │   ├── test_models.py        # Model registration and relationships
