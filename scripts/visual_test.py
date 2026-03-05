@@ -27,7 +27,6 @@ Usage:
     pipenv run python -m scripts.visual_test
 """
 
-import asyncio
 import os
 import subprocess
 import threading
@@ -91,41 +90,54 @@ def _screenshot(driver, tailwind_css, name):
 
 
 def _seed_sample_jobs():
-    """Insert sample jobs in various states for visual testing."""
-    from app.database import AsyncSessionLocal
-    from app.models.job import Job
+    """Insert sample jobs in various states for visual testing.
 
-    async def _insert():
-        async with AsyncSessionLocal() as session:
-            now = datetime.now(timezone.utc)
-            jobs = [
-                Job(
-                    job_type="FETCH",
-                    status="COMPLETED",
-                    triggered_by="ui",
-                    started_at=now.replace(minute=0),
-                    completed_at=now.replace(minute=3),
-                    result_summary={"fetched": 50, "new_reps": 3, "scored": 45, "errors": 0, "tokens": 12500},
-                ),
-                Job(
-                    job_type="SCORE",
-                    status="FAILED",
-                    triggered_by="ui",
-                    started_at=now.replace(minute=5),
-                    completed_at=now.replace(minute=5, second=30),
-                    error_message="Anthropic API error: rate limit exceeded (429). Retry after 60s.",
-                ),
-                Job(
-                    job_type="FETCH",
-                    status="RUNNING",
-                    triggered_by="cron",
-                    started_at=now.replace(minute=10),
-                ),
-            ]
-            session.add_all(jobs)
-            await session.commit()
+    Uses psycopg2 directly to avoid event-loop conflicts with the
+    uvicorn server thread that owns the async engine.
+    """
+    import json
 
-    asyncio.run(_insert())
+    import psycopg2
+    from app.config import settings
+
+    db_url = settings.DATABASE_URL
+    # psycopg2 needs postgresql:// not postgresql+asyncpg://
+    for prefix in ("postgresql+asyncpg://", "postgresql+psycopg2://"):
+        if db_url.startswith(prefix):
+            db_url = "postgresql://" + db_url[len(prefix):]
+
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+    now = datetime.now(timezone.utc)
+
+    rows = [
+        ("FETCH", "COMPLETED", "ui",
+         now.replace(minute=0, second=0, microsecond=0),
+         now.replace(minute=3, second=12, microsecond=0),
+         json.dumps({"fetched": 50, "new_reps": 3, "scored": 45, "errors": 0, "tokens": 12500}),
+         None),
+        ("SCORE", "FAILED", "ui",
+         now.replace(minute=5, second=0, microsecond=0),
+         now.replace(minute=5, second=30, microsecond=0),
+         None,
+         "Anthropic API error: rate limit exceeded (429). Retry after 60s."),
+        ("FETCH", "RUNNING", "cron",
+         now.replace(minute=10, second=0, microsecond=0),
+         None, None, None),
+    ]
+    for job_type, status, triggered_by, started_at, completed_at, summary, error in rows:
+        cur.execute(
+            """INSERT INTO jobs
+               (job_type, status, triggered_by, started_at, completed_at,
+                result_summary, error_message, created_at, updated_at,
+                created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (job_type, status, triggered_by, started_at, completed_at,
+             summary, error, now, now, "seed", "seed"),
+        )
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 def _take_screenshots():
