@@ -213,9 +213,12 @@ email-reviewer/
 │   │   ├── settings.py       # Settings CRUD (get_settings, update_settings)
 │   │   └── job_runner.py     # Job execution (fetch, score, rescore, export)
 │   ├── static/               # Static assets
-│   │   └── css/style.css     # Score colour utility classes
+│   │   └── css/
+│   │       ├── input.css     # Tailwind CSS input (import directive)
+│   │       ├── tailwind.css  # Pre-built Tailwind CSS (generated, committed)
+│   │       └── style.css     # Score colour utility classes
 │   ├── templates/            # Jinja2 HTML templates
-│   │   ├── base.html         # Layout with Tailwind CDN and nav
+│   │   ├── base.html         # Layout with nav bar
 │   │   ├── team.html         # Rep team table
 │   │   ├── rep_detail.html   # Rep email list with expandable preview
 │   │   └── settings.html     # Settings form + operations panel
@@ -240,6 +243,8 @@ email-reviewer/
 │   ├── conftest.py           # Fixtures (db, client, factories)
 │   ├── fixtures/             # Test data builders
 │   │   └── hubspot.py        # HubSpot API response fixtures
+│   ├── visual/               # Visual regression tests
+│   │   └── screenshot.py     # Selenium screenshot script
 │   ├── test_database.py       # Database URL async driver conversion
 │   ├── test_main.py          # Health endpoint
 │   ├── test_enums.py         # Enum values
@@ -258,6 +263,7 @@ email-reviewer/
 ├── alembic.ini               # Alembic configuration
 ├── CLAUDE.md                 # Coding agent instructions
 ├── fetch_emails.py           # Standalone HubSpot fetch script (reference)
+├── package.json              # Node dependencies (Tailwind CSS CLI)
 ├── Pipfile                   # Python dependencies
 ├── Procfile                  # Heroku deployment
 └── pytest.ini                # Test configuration
