@@ -1,6 +1,9 @@
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import select
+
 from app.enums import JobStatus, JobType
+from app.models.job import Job
 
 
 class TestPostOperations:
@@ -87,3 +90,69 @@ class TestConflictPrevention:
         await db.commit()
         resp = await client.post("/api/operations/score")
         assert resp.status_code == 409
+
+
+class TestFetchWithParams:
+    @patch("app.routers.operations.run_fetch_job", new_callable=AsyncMock)
+    async def test_fetch_no_body_still_works(self, mock_run, client):
+        resp = await client.post("/api/operations/fetch")
+        assert resp.status_code == 202
+        assert "job_id" in resp.json()
+
+    @patch("app.routers.operations.run_fetch_job", new_callable=AsyncMock)
+    async def test_fetch_with_full_json_body(self, mock_run, client, db):
+        resp = await client.post(
+            "/api/operations/fetch",
+            json={"start_date": "2024-01-01", "end_date": "2024-01-31", "max_count": 50},
+        )
+        assert resp.status_code == 202
+        job_id = resp.json()["job_id"]
+
+        result = await db.execute(select(Job).where(Job.job_id == job_id))
+        job = result.scalar_one()
+        assert job.result_summary is not None
+        params = job.result_summary["params"]
+        assert params["start_date"] == "2024-01-01"
+        assert params["end_date"] == "2024-01-31"
+        assert params["max_count"] == 50
+
+    @patch("app.routers.operations.run_fetch_job", new_callable=AsyncMock)
+    async def test_fetch_with_partial_body(self, mock_run, client, db):
+        resp = await client.post(
+            "/api/operations/fetch",
+            json={"max_count": 25},
+        )
+        assert resp.status_code == 202
+        job_id = resp.json()["job_id"]
+
+        result = await db.execute(select(Job).where(Job.job_id == job_id))
+        job = result.scalar_one()
+        params = job.result_summary["params"]
+        assert params["start_date"] is None
+        assert params["end_date"] is None
+        assert params["max_count"] == 25
+
+    @patch("app.routers.operations.run_fetch_job", new_callable=AsyncMock)
+    async def test_fetch_params_stored_in_result_summary(self, mock_run, client, db):
+        resp = await client.post(
+            "/api/operations/fetch",
+            json={"start_date": "2024-06-15"},
+        )
+        assert resp.status_code == 202
+        job_id = resp.json()["job_id"]
+
+        result = await db.execute(select(Job).where(Job.job_id == job_id))
+        job = result.scalar_one()
+        assert "params" in job.result_summary
+        assert job.result_summary["params"]["start_date"] == "2024-06-15"
+
+    @patch("app.routers.operations.run_fetch_job", new_callable=AsyncMock)
+    async def test_fetch_passes_params_to_run_fetch_job(self, mock_run, client):
+        await client.post(
+            "/api/operations/fetch",
+            json={"start_date": "2024-01-01", "end_date": "2024-01-31", "max_count": 50},
+        )
+        _, kwargs = mock_run.call_args
+        assert kwargs["fetch_start_date"].isoformat() == "2024-01-01"
+        assert kwargs["fetch_end_date"].isoformat() == "2024-01-31"
+        assert kwargs["max_count"] == 50

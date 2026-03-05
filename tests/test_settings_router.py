@@ -81,3 +81,18 @@ class TestSettingsPage:
         resp = await client.get("/settings")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
+
+    async def test_dev_mode_section_visible_when_auth_disabled(self, client):
+        resp = await client.get("/settings")
+        assert resp.status_code == 200
+        assert "Dev Mode" in resp.text
+
+    async def test_dev_mode_contains_form_elements(self, client):
+        resp = await client.get("/settings")
+        html = resp.text
+        assert 'id="fetch_start_date"' in html
+        assert 'id="fetch_end_date"' in html
+        assert 'id="fetch_max_count"' in html
+        assert "Fetch Start Date" in html
+        assert "Fetch End Date" in html
+        assert "Max Emails" in html

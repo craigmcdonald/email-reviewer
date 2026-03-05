@@ -1,11 +1,13 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.enums import JobStatus, JobType
 from app.models.job import Job
-from app.schemas.job import JobResponse, LastRunResponse
+from app.schemas.job import FetchRequest, JobResponse, LastRunResponse
 from app.services.job_runner import (
     run_export_job,
     run_fetch_job,
@@ -46,11 +48,28 @@ async def _create_job(
 async def start_fetch(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
+    body: Optional[FetchRequest] = Body(default=None),
 ):
     await _check_no_running(session, [JobType.FETCH])
     job = await _create_job(session, JobType.FETCH)
+
+    fetch_kwargs: dict = {}
+    if body:
+        params = {
+            "start_date": body.start_date.isoformat() if body.start_date else None,
+            "end_date": body.end_date.isoformat() if body.end_date else None,
+            "max_count": body.max_count,
+        }
+        job.result_summary = {"params": params}
+        if body.start_date:
+            fetch_kwargs["fetch_start_date"] = body.start_date
+        if body.end_date:
+            fetch_kwargs["fetch_end_date"] = body.end_date
+        if body.max_count is not None:
+            fetch_kwargs["max_count"] = body.max_count
+
     await session.commit()
-    background_tasks.add_task(run_fetch_job, session, job.job_id)
+    background_tasks.add_task(run_fetch_job, session, job.job_id, **fetch_kwargs)
     return job
 
 

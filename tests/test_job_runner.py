@@ -215,6 +215,82 @@ class TestRunFetchJob:
         assert "HubSpot down" in updated.error_message
 
 
+class TestRunFetchJobWithParams:
+    @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=3)
+    async def test_explicit_start_date_overrides_computed(
+        self, mock_fetch, db, make_job, make_settings
+    ):
+        await make_settings(auto_score_after_fetch=False)
+        job = await make_job(job_type=JobType.FETCH)
+        await db.commit()
+
+        from app.services.job_runner import run_fetch_job
+
+        await run_fetch_job(
+            db, job.job_id, fetch_start_date=date(2024, 1, 1)
+        )
+
+        call_kwargs = mock_fetch.call_args
+        start_date = call_kwargs.kwargs.get("start_date") or call_kwargs[1].get("start_date")
+        assert start_date == datetime.combine(date(2024, 1, 1), datetime.min.time())
+
+    @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=3)
+    async def test_end_date_passed_to_fetch_and_store(
+        self, mock_fetch, db, make_job, make_settings
+    ):
+        await make_settings(auto_score_after_fetch=False)
+        job = await make_job(job_type=JobType.FETCH)
+        await db.commit()
+
+        from app.services.job_runner import run_fetch_job
+
+        await run_fetch_job(
+            db, job.job_id, fetch_end_date=date(2024, 1, 31)
+        )
+
+        call_kwargs = mock_fetch.call_args
+        end_date = call_kwargs.kwargs.get("end_date") or call_kwargs[1].get("end_date")
+        assert end_date == datetime.combine(date(2024, 1, 31), datetime.min.time())
+
+    @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=3)
+    async def test_max_count_passed_to_fetch_and_store(
+        self, mock_fetch, db, make_job, make_settings
+    ):
+        await make_settings(auto_score_after_fetch=False)
+        job = await make_job(job_type=JobType.FETCH)
+        await db.commit()
+
+        from app.services.job_runner import run_fetch_job
+
+        await run_fetch_job(db, job.job_id, max_count=50)
+
+        call_kwargs = mock_fetch.call_args
+        max_count = call_kwargs.kwargs.get("max_count") or call_kwargs[1].get("max_count")
+        assert max_count == 50
+
+    @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=3)
+    async def test_none_params_preserve_default_behaviour(
+        self, mock_fetch, db, make_job, make_settings
+    ):
+        await make_settings(
+            global_start_date=date(2025, 6, 1), auto_score_after_fetch=False
+        )
+        job = await make_job(job_type=JobType.FETCH)
+        await db.commit()
+
+        from app.services.job_runner import run_fetch_job
+
+        await run_fetch_job(db, job.job_id)
+
+        call_kwargs = mock_fetch.call_args
+        start_date = call_kwargs.kwargs.get("start_date") or call_kwargs[1].get("start_date")
+        assert start_date == datetime.combine(date(2025, 6, 1), datetime.min.time())
+        end_date = call_kwargs.kwargs.get("end_date")
+        assert end_date is None
+        max_count = call_kwargs.kwargs.get("max_count")
+        assert max_count is None
+
+
 class TestRunScoreJob:
     @patch("app.services.job_runner.score_unscored_emails", new_callable=AsyncMock)
     async def test_sets_running_then_completed(self, mock_score, db, make_job):

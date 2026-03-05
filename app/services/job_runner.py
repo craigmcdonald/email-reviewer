@@ -1,6 +1,7 @@
 """Job runners for fetch, score, rescore, and export operations."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from typing import Optional
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +34,14 @@ def _set_failed(job: Job, error: str) -> None:
     job.error_message = error
 
 
-async def run_fetch_job(session: AsyncSession, job_id: int) -> None:
+async def run_fetch_job(
+    session: AsyncSession,
+    job_id: int,
+    *,
+    fetch_start_date: Optional[date] = None,
+    fetch_end_date: Optional[date] = None,
+    max_count: Optional[int] = None,
+) -> None:
     result = await session.execute(select(Job).where(Job.job_id == job_id))
     job = result.scalar_one()
     _set_running(job)
@@ -46,22 +54,37 @@ async def run_fetch_job(session: AsyncSession, job_id: int) -> None:
         ]
 
         # Compute effective start date
-        max_fetched = await session.execute(select(func.max(Email.fetched_at)))
-        max_fetched_at = max_fetched.scalar_one_or_none()
-
-        global_start = datetime.combine(
-            settings.global_start_date, datetime.min.time()
-        )
-        if max_fetched_at and max_fetched_at > global_start:
-            effective_start = max_fetched_at
+        if fetch_start_date:
+            effective_start = datetime.combine(
+                fetch_start_date, datetime.min.time()
+            )
         else:
-            effective_start = global_start
+            max_fetched = await session.execute(select(func.max(Email.fetched_at)))
+            max_fetched_at = max_fetched.scalar_one_or_none()
+
+            global_start = datetime.combine(
+                settings.global_start_date, datetime.min.time()
+            )
+            if max_fetched_at and max_fetched_at > global_start:
+                effective_start = max_fetched_at
+            else:
+                effective_start = global_start
+
+        fetch_kwargs: dict = {
+            "start_date": effective_start,
+        }
+        if fetch_end_date:
+            fetch_kwargs["end_date"] = datetime.combine(
+                fetch_end_date, datetime.min.time()
+            )
+        if max_count is not None:
+            fetch_kwargs["max_count"] = max_count
 
         fetched_count = await fetch_and_store(
             session,
             access_token=app_config.HUBSPOT_ACCESS_TOKEN,
             company_domains=company_domains,
-            start_date=effective_start,
+            **fetch_kwargs,
         )
 
         # Count new reps created in this session

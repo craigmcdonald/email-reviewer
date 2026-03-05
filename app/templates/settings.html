@@ -45,6 +45,30 @@
         </form>
     </section>
 
+    {% if dev_mode %}
+    <!-- Dev Mode -->
+    <section>
+        <h1 class="text-2xl font-bold text-gray-900 mb-6">Dev Mode</h1>
+        <div class="space-y-4 bg-white shadow rounded-lg p-6">
+            <div>
+                <label for="fetch_start_date" class="block text-sm font-medium text-gray-700">Fetch Start Date</label>
+                <input type="date" id="fetch_start_date"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            </div>
+            <div>
+                <label for="fetch_end_date" class="block text-sm font-medium text-gray-700">Fetch End Date</label>
+                <input type="date" id="fetch_end_date"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            </div>
+            <div>
+                <label for="fetch_max_count" class="block text-sm font-medium text-gray-700">Max Emails</label>
+                <input type="number" id="fetch_max_count" min="1" value="100"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
     <!-- Operations Panel -->
     <section>
         <h1 class="text-2xl font-bold text-gray-900 mb-6">Operations</h1>
@@ -93,7 +117,21 @@
 
 <script>
 async function startOperation(type) {
-    const resp = await fetch(`/api/operations/${type}`, { method: 'POST' });
+    const opts = { method: 'POST' };
+    if (type === 'fetch') {
+        const startDate = document.getElementById('fetch_start_date');
+        const endDate = document.getElementById('fetch_end_date');
+        const maxCount = document.getElementById('fetch_max_count');
+        if (startDate && (startDate.value || endDate.value || maxCount.value)) {
+            const body = {};
+            if (startDate.value) body.start_date = startDate.value;
+            if (endDate.value) body.end_date = endDate.value;
+            if (maxCount.value) body.max_count = parseInt(maxCount.value);
+            opts.headers = { 'Content-Type': 'application/json' };
+            opts.body = JSON.stringify(body);
+        }
+    }
+    const resp = await fetch(`/api/operations/${type}`, opts);
     if (resp.ok) {
         loadJobs();
     } else {
