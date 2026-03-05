@@ -99,6 +99,17 @@ def _build_search_body(
     return body
 
 
+def _parse_timestamp(value: str | None) -> datetime | None:
+    """Parse a HubSpot timestamp string (ISO 8601) into a datetime."""
+    if not value:
+        return None
+    try:
+        # HubSpot returns ISO 8601 timestamps like "2026-02-02T08:18:00.440Z"
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+    except (ValueError, AttributeError):
+        return None
+
+
 def _parse_email(result: dict) -> dict:
     """Extract a flat email dict from a HubSpot search result object."""
     props = result.get("properties", {})
@@ -108,7 +119,7 @@ def _parse_email(result: dict) -> dict:
     to_last = props.get("hs_email_to_lastname") or ""
     return {
         "id": result["id"],
-        "timestamp": props.get("hs_timestamp", ""),
+        "timestamp": _parse_timestamp(props.get("hs_timestamp")),
         "subject": props.get("hs_email_subject", ""),
         "from_email": props.get("hs_email_from_email", ""),
         "from_name": f"{first} {last}".strip(),
@@ -121,11 +132,10 @@ def _parse_email(result: dict) -> dict:
 
 def fetch_emails_from_hubspot(
     access_token: str,
-    max_count: Optional[int] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
 ) -> list[dict]:
-    """Fetch emails from HubSpot CRM v3 search API with pagination and retry."""
+    """Fetch all emails from HubSpot CRM v3 search API with pagination and retry."""
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -134,9 +144,6 @@ def fetch_emails_from_hubspot(
     after: Optional[str] = None
 
     while True:
-        if max_count and len(all_emails) >= max_count:
-            break
-
         body = _build_search_body(
             start_date=start_date, end_date=end_date, after=after
         )
@@ -167,8 +174,6 @@ def fetch_emails_from_hubspot(
 
         for result in data.get("results", []):
             all_emails.append(result)
-            if max_count and len(all_emails) >= max_count:
-                break
 
         paging = data.get("paging", {})
         next_page = paging.get("next", {})
@@ -201,6 +206,7 @@ async def upsert_emails_to_db(
         existing = result.scalar_one_or_none()
 
         if existing:
+            existing.timestamp = parsed["timestamp"]
             existing.subject = parsed["subject"]
             existing.from_email = parsed["from_email"]
             existing.from_name = parsed["from_name"]
@@ -211,6 +217,7 @@ async def upsert_emails_to_db(
         else:
             email = Email(
                 hubspot_id=hubspot_id,
+                timestamp=parsed["timestamp"],
                 subject=parsed["subject"],
                 from_email=parsed["from_email"],
                 from_name=parsed["from_name"],
@@ -251,13 +258,16 @@ async def fetch_and_store(
 ) -> int:
     """Fetch emails from HubSpot, filter outgoing, and upsert to DB.
 
-    Returns the number of emails stored.
+    max_count limits the number of filtered outgoing emails stored, not the
+    number of raw results fetched from HubSpot. Returns the number of emails
+    stored.
     """
     raw_emails = fetch_emails_from_hubspot(
         access_token,
-        max_count=max_count,
         start_date=start_date,
         end_date=end_date,
     )
     outgoing = filter_outgoing_emails(raw_emails, company_domains)
+    if max_count is not None:
+        outgoing = outgoing[:max_count]
     return await upsert_emails_to_db(session, outgoing)

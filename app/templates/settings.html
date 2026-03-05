@@ -76,7 +76,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <h3 class="text-sm font-medium text-gray-900">Fetch Emails</h3>
-                    <p class="text-xs text-gray-500">Fetch from HubSpot and optionally auto-score.</p>
+                    <p class="text-xs text-gray-500">Fetch from HubSpot.{% if settings.auto_score_after_fetch %} Auto-score is enabled.{% endif %}</p>
                 </div>
                 <button onclick="startOperation('fetch')"
                         class="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">Fetch</button>
