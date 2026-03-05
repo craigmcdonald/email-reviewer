@@ -123,7 +123,7 @@ class TestScoreSingleEmail:
         assert mock_client.messages.create.call_count == 2
 
     @patch("app.services.scorer.asyncio.sleep", new_callable=AsyncMock)
-    async def test_retries_on_rate_limit_then_succeeds(self, mock_sleep):
+    async def test_retries_on_rate_limit_using_retry_after_header(self, mock_sleep):
         valid_json = json.dumps({
             "personalisation": 7,
             "clarity": 8,
@@ -136,10 +136,11 @@ class TestScoreSingleEmail:
         valid_message.content = [MagicMock(text=valid_json)]
         valid_message.usage = MagicMock(input_tokens=100, output_tokens=50)
 
+        rate_limit_response = MagicMock(status_code=429, headers={"retry-after": "42"})
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(
             side_effect=[
-                RateLimitError(message="rate limited", response=MagicMock(status_code=429, headers={}), body=None),
+                RateLimitError(message="rate limited", response=rate_limit_response, body=None),
                 valid_message,
             ]
         )
@@ -151,14 +152,47 @@ class TestScoreSingleEmail:
 
         assert result is not None
         assert result.overall == 7
-        mock_sleep.assert_called_once()
+        mock_sleep.assert_called_once_with(42.0)
+
+    @patch("app.services.scorer.asyncio.sleep", new_callable=AsyncMock)
+    async def test_uses_default_delay_when_retry_after_header_missing(self, mock_sleep):
+        from app.services.scorer import DEFAULT_RETRY_AFTER
+
+        valid_json = json.dumps({
+            "personalisation": 5,
+            "clarity": 5,
+            "value_proposition": 5,
+            "cta": 5,
+            "overall": 5,
+            "notes": "Ok.",
+        })
+        valid_message = MagicMock()
+        valid_message.content = [MagicMock(text=valid_json)]
+        valid_message.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        no_header_response = MagicMock(status_code=429, headers={})
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(
+            side_effect=[
+                RateLimitError(message="rate limited", response=no_header_response, body=None),
+                valid_message,
+            ]
+        )
+
+        email = Email(id=6, from_email="a@b.com", body_text="Test body content")
+        semaphore = asyncio.Semaphore(5)
+
+        result = await _score_single_email(mock_client, email, semaphore)
+
+        assert result is not None
+        mock_sleep.assert_called_once_with(DEFAULT_RETRY_AFTER)
 
     @patch("app.services.scorer.asyncio.sleep", new_callable=AsyncMock)
     async def test_returns_none_after_all_rate_limit_retries_exhausted(self, mock_sleep):
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(
             side_effect=RateLimitError(
-                message="rate limited", response=MagicMock(status_code=429, headers={}), body=None
+                message="rate limited", response=MagicMock(status_code=429, headers={"retry-after": "5"}), body=None
             )
         )
 

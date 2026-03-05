@@ -37,7 +37,7 @@ Respond with ONLY a JSON object in this exact format, no other text:
 MAX_BODY_LENGTH = 4000
 MIN_WORD_COUNT = 20
 MAX_RATE_LIMIT_RETRIES = 5
-RATE_LIMIT_BASE_DELAY = 10
+DEFAULT_RETRY_AFTER = 60
 
 
 def _build_user_message(email: Email) -> str:
@@ -63,10 +63,18 @@ def _build_user_message(email: Email) -> str:
     )
 
 
+def _get_retry_after(exc: RateLimitError) -> float:
+    """Extract retry-after seconds from a RateLimitError's response headers."""
+    try:
+        return float(exc.response.headers["retry-after"])
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return DEFAULT_RETRY_AFTER
+
+
 async def _call_claude_with_retry(
     client: AsyncAnthropic, user_message: str
 ) -> tuple[object, dict]:
-    """Call Claude API with rate limit retry and exponential backoff.
+    """Call Claude API, retrying on 429 using the retry-after header.
 
     Returns (response, token_totals). Raises RateLimitError if all retries
     are exhausted.
@@ -84,12 +92,12 @@ async def _call_claude_with_retry(
             total_tokens["input"] += response.usage.input_tokens
             total_tokens["output"] += response.usage.output_tokens
             return response, total_tokens
-        except RateLimitError:
+        except RateLimitError as exc:
             if attempt == MAX_RATE_LIMIT_RETRIES - 1:
                 raise
-            delay = RATE_LIMIT_BASE_DELAY * (2 ** attempt)
+            delay = _get_retry_after(exc)
             logger.warning(
-                "Rate limited by Claude API, retrying in %ds (attempt %d/%d)",
+                "Rate limited by Claude API, retry-after %gs (attempt %d/%d)",
                 delay, attempt + 1, MAX_RATE_LIMIT_RETRIES,
             )
             await asyncio.sleep(delay)
