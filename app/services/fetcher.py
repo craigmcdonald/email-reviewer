@@ -168,9 +168,13 @@ def fetch_emails_from_hubspot(
 
             break
         else:
+            import json as _json
+
             raise RuntimeError(
                 f"HubSpot API request failed after {MAX_RETRIES} retries "
-                f"(HTTP {resp.status_code}: {resp.text[:200]})"
+                f"(HTTP {resp.status_code})\n"
+                f"Response: {resp.text[:500]}\n"
+                f"Request body: {_json.dumps(body)}"
             )
 
         data = resp.json()
