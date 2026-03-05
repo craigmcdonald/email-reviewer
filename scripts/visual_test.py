@@ -13,6 +13,7 @@ Captures:
     - Expanded <details> elements showing email body and scorer notes
     - Back-to-team navigation
     - Settings page with form values and operations panel
+    - Settings page dev mode panel with date pickers and max count filled in
     - Nav bar link navigation between pages
 
 Prerequisites:
@@ -171,6 +172,17 @@ def _take_screenshots():
     driver.find_element(By.LINK_TEXT, "Settings").click()
     time.sleep(2)  # extra time for loadJobs() JS fetch
     _screenshot(driver, tailwind_css, "07_settings")
+
+    # ── 6b. Settings page dev mode panel ──────────────────────────────────
+    print("  6b. Settings dev mode panel")
+    start_input = driver.find_element(By.ID, "fetch_start_date")
+    end_input = driver.find_element(By.ID, "fetch_end_date")
+    max_input = driver.find_element(By.ID, "fetch_max_count")
+    start_input.send_keys("2024-01-01")
+    end_input.send_keys("2024-01-31")
+    max_input.clear()
+    max_input.send_keys("50")
+    _screenshot(driver, tailwind_css, "07b_settings_dev_mode")
 
     # ── 7. Navigate back to Team via nav link ────────────────────────────
     print("  7. Click Team nav link")

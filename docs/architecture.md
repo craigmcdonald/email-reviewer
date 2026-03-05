@@ -204,7 +204,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 
 | Route | Response |
 |-------|----------|
-| `POST /api/operations/fetch` | 202 with job record. Rejects 409 if a FETCH job is RUNNING. |
+| `POST /api/operations/fetch` | 202 with job record. Rejects 409 if a FETCH job is RUNNING. Accepts optional JSON body with `start_date`, `end_date` (date strings), and `max_count` (int) to override default fetch behaviour. Params are stored in `result_summary.params`. |
 | `POST /api/operations/score` | 202 with job record. Rejects 409 if SCORE or RESCORE is RUNNING. |
 | `POST /api/operations/rescore` | 202 with job record. Rejects 409 if SCORE or RESCORE is RUNNING. |
 | `POST /api/operations/export` | 202 with job record. |
@@ -246,7 +246,7 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 
 `app/services/job_runner.py` executes operations as background tasks. Each runner follows the same pattern: set RUNNING with `started_at`, execute, set COMPLETED/FAILED with `completed_at` and `result_summary`/`error_message`. All wrapped in try/except.
 
-- `run_fetch_job(session, job_id)` — reads settings, computes effective start date, calls `fetch_and_store` with company_domains, optionally runs scoring if `auto_score_after_fetch` is true. Result summary includes `fetched`, `new_reps`, and optionally `scored`, `errors`, `tokens`.
+- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided), calls `fetch_and_store` with company_domains and optional `end_date`/`max_count`, optionally runs scoring if `auto_score_after_fetch` is true. Result summary includes `fetched`, `new_reps`, and optionally `scored`, `errors`, `tokens`.
 - `run_score_job(session, job_id)` — reads `scoring_batch_size` from settings, calls `score_unscored_emails`. Result summary includes `scored`, `errors`, `tokens`.
 - `run_rescore_job(session, job_id)` — deletes all existing scores, then calls `score_unscored_emails` to score every email.
 - `run_export_job(session, job_id, output_path)` — generates Excel via `export_to_excel`, stores path in result summary.

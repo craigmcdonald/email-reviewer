@@ -76,6 +76,8 @@ pipenv run uvicorn app.main:app --reload --port 8000
 
 The `--reload` flag enables auto-restart on file changes. The app is available at `http://localhost:8000`. Dashboard at `/`, settings and operations at `/settings`, health check at `GET /health`, JSON API at `/api/`.
 
+When `AUTH_ENABLED=FALSE` (the default for local development), the settings page shows a **Dev Mode** panel with date pickers and a max emails input. These values are sent as the JSON body when triggering a fetch operation, allowing control over the date range and number of emails fetched from HubSpot.
+
 ## Running Tests
 
 ```bash

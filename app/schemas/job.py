@@ -1,7 +1,13 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from app.schemas.base import AppBase
+
+
+class FetchRequest(AppBase):
+    start_date: date | None = None
+    end_date: date | None = None
+    max_count: int | None = None
 
 
 class JobResponse(AppBase):

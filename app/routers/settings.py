@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings as app_config
 from app.database import get_db
 from app.schemas.settings import SettingsResponse, SettingsUpdate
 from app.services.settings import get_settings, update_settings
@@ -27,5 +28,5 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_db
     return templates.TemplateResponse(
         request,
         "settings.html",
-        {"settings": settings},
+        {"settings": settings, "dev_mode": not app_config.AUTH_ENABLED},
     )
