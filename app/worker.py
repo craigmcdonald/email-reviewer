@@ -12,7 +12,7 @@ def _get_connection():
     """Return a Redis connection if REDIS_URL is configured, else None."""
     if not settings.REDIS_URL:
         return None
-    return Redis.from_url(settings.REDIS_URL)
+    return Redis.from_url(settings.REDIS_URL, socket_timeout=5, socket_connect_timeout=5)
 
 
 def get_queue():
