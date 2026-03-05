@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 .coverage
 *.db
+node_modules/
