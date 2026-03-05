@@ -26,7 +26,7 @@ Required variables:
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string, e.g. `postgresql://user:pass@localhost:5432/email_reviewer` |
+| `DATABASE_URL` | PostgreSQL connection string, e.g. `postgresql://user:pass@localhost:5432/email_reviewer`. The app and Alembic auto-convert this to use the `asyncpg` driver. |
 | `HUBSPOT_ACCESS_TOKEN` | HubSpot private app access token |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude scoring |
 | `AUTH_ENABLED` | Set to `FALSE` for local development |
