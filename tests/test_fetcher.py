@@ -33,15 +33,14 @@ class TestFilterOutgoingEmails:
         assert len(result) == 1
         assert result[0]["id"] == OUTGOING_SALES_EMAIL["id"]
 
-    def test_keeps_forwarded_email_direction_from_company_domain(self):
+    def test_drops_forwarded_email_direction(self):
         forwarded_from_company = make_hubspot_email(
             id="fwd-company",
             hs_email_direction="FORWARDED_EMAIL",
             hs_email_from_email="rep@nativecampusadvertising.com",
         )
         result = filter_outgoing_emails([forwarded_from_company], COMPANY_DOMAINS)
-        assert len(result) == 1
-        assert result[0]["id"] == "fwd-company"
+        assert result == []
 
     def test_drops_incoming_email_direction(self):
         result = filter_outgoing_emails([INCOMING_EMAIL], COMPANY_DOMAINS)

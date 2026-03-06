@@ -44,10 +44,12 @@ def filter_outgoing_emails(
     """Keep only outgoing emails sent from a company domain.
 
     Filters on two criteria:
-    1. Direction must be EMAIL or FORWARDED_EMAIL (drops INCOMING_EMAIL).
+    1. Direction must be EMAIL (drops INCOMING_EMAIL and FORWARDED_EMAIL).
+       FORWARDED_EMAIL means an email was forwarded to the CRM for logging,
+       not an outgoing sales email.
     2. The from_email domain must be in the company_domains list.
     """
-    allowed_directions = {"EMAIL", "FORWARDED_EMAIL"}
+    allowed_directions = {"EMAIL"}
     result = []
     for email in emails:
         props = email.get("properties", {})

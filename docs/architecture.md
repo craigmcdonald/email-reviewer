@@ -134,7 +134,7 @@ Managed by Alembic with async support. The `alembic/env.py` file converts Postgr
 `app/services/fetcher.py` ingests outgoing sales emails from the HubSpot CRM v3 search API. The entry point is `fetch_and_store(session, access_token, company_domains, ...)`, which:
 
 1. Calls `fetch_emails_from_hubspot()` to paginate through HubSpot search results with retry logic (exponential backoff on errors, respects `Retry-After` on 429s). When `max_count` is set, passes `max_results=int(max_count * 1.5)` to stop pagination early — the 1.5x multiplier accounts for non-outgoing emails that will be filtered out. HubSpot's search API has a 10,000 result paging limit; when hit, the fetcher automatically subdivides the date range into halves and fetches each recursively, deduplicating by HubSpot ID at the boundary.
-2. Calls `filter_outgoing_emails()` to keep only emails with direction EMAIL or FORWARDED_EMAIL sent from a company domain.
+2. Calls `filter_outgoing_emails()` to keep only emails with direction EMAIL sent from a company domain. FORWARDED_EMAIL records (emails forwarded to the CRM for logging) are excluded since they are not outgoing sales emails.
 3. Applies `max_count` (if provided) to the filtered list, limiting stored emails.
 4. Calls `upsert_emails_to_db()` to upsert on `hubspot_id` and auto-create Rep records for new sender addresses. Parses `hs_timestamp` from HubSpot into the `timestamp` column.
 
@@ -145,11 +145,11 @@ Returns the number of emails stored.
 `app/services/scorer.py` scores unscored emails via the Claude API (claude-sonnet-4-20250514). The entry point is `score_unscored_emails(session, batch_size=5)`, which:
 
 1. Queries emails with no matching score record (LEFT JOIN scores WHERE NULL).
-2. Auto-scores emails with empty or very short bodies (under 20 words) as all 1s without calling Claude. The score notes explain why.
+2. Skips emails with empty or very short bodies (under 20 words) — no score row is created since there is no content to evaluate.
 3. Sends remaining emails to Claude concurrently, capped by an asyncio semaphore (`batch_size`).
 4. Retries on rate limit (429) errors using the `retry-after` header from the API response, up to 5 attempts. Falls back to 60 seconds when the header is missing.
 5. Retries once on JSON parse failure. After two consecutive failures, writes a score row with `score_error=True`.
-6. Returns a summary dict with counts (`total_unscored`, `scored`, `auto_scored`, `errors`) and token usage.
+6. Returns a summary dict with counts (`total_unscored`, `scored`, `skipped`, `errors`) and token usage.
 
 `_build_user_message(email)` formats the email's From, To, Subject, Date, and Body fields into a prompt string. Body text is truncated to 4000 characters.
 

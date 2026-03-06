@@ -141,9 +141,9 @@ async def score_unscored_emails(
 ) -> dict:
     """Score emails that don't yet have a score record.
 
-    Emails with empty or very short bodies (under 20 words) are auto-scored
-    as all 1s without calling Claude. Returns a summary dict with counts
-    and total tokens used.
+    Emails with empty or very short bodies (under 20 words) are skipped
+    entirely — no score row is created since there is no content to
+    evaluate. Returns a summary dict with counts and total tokens used.
     """
     # Find emails without a score via LEFT JOIN
     stmt = (
@@ -157,7 +157,7 @@ async def score_unscored_emails(
     summary = {
         "total_unscored": len(unscored),
         "scored": 0,
-        "auto_scored": 0,
+        "skipped": 0,
         "errors": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
@@ -169,34 +169,8 @@ async def score_unscored_emails(
         body = email.body_text or ""
         word_count = len(body.split()) if body.strip() else 0
 
-        if not body.strip():
-            score = Score(
-                email_id=email.id,
-                personalisation=1,
-                clarity=1,
-                value_proposition=1,
-                cta=1,
-                overall=1,
-                notes="Auto-scored: empty body, no content to evaluate.",
-                score_error=False,
-                scored_at=datetime.utcnow(),
-            )
-            session.add(score)
-            summary["auto_scored"] += 1
-        elif word_count < MIN_WORD_COUNT:
-            score = Score(
-                email_id=email.id,
-                personalisation=1,
-                clarity=1,
-                value_proposition=1,
-                cta=1,
-                overall=1,
-                notes=f"Auto-scored: body under {MIN_WORD_COUNT} words, insufficient content to evaluate.",
-                score_error=False,
-                scored_at=datetime.utcnow(),
-            )
-            session.add(score)
-            summary["auto_scored"] += 1
+        if not body.strip() or word_count < MIN_WORD_COUNT:
+            summary["skipped"] += 1
         else:
             to_score_with_claude.append(email)
 

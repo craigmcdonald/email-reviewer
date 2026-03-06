@@ -215,40 +215,26 @@ class TestScoreUnscoredEmails:
         mock_cls.assert_not_called()
         assert summary["scored"] == 0
 
-    async def test_auto_scores_empty_body_as_all_ones(self, db, make_email):
+    async def test_skips_empty_body_without_creating_score(self, db, make_email):
         await make_email(from_email="rep@example.com", body_text=None)
 
         with patch("app.services.scorer.AsyncAnthropic") as mock_cls:
             summary = await score_unscored_emails(db)
 
         mock_cls.assert_not_called()
-        assert summary["auto_scored"] == 1
+        assert summary["skipped"] == 1
 
         result = await db.execute(select(Score))
-        score = result.scalar_one()
-        assert score.personalisation == 1
-        assert score.clarity == 1
-        assert score.value_proposition == 1
-        assert score.cta == 1
-        assert score.overall == 1
-        assert score.score_error is False
-        assert "empty" in score.notes.lower() or "no body" in score.notes.lower()
+        assert result.scalars().all() == []
 
-    async def test_auto_scores_short_body_as_all_ones(self, db, make_email):
+    async def test_skips_short_body_without_creating_score(self, db, make_email):
         await make_email(from_email="rep@example.com", body_text="Too short to score")
 
         with patch("app.services.scorer.AsyncAnthropic") as mock_cls:
             summary = await score_unscored_emails(db)
 
         mock_cls.assert_not_called()
-        assert summary["auto_scored"] == 1
+        assert summary["skipped"] == 1
 
         result = await db.execute(select(Score))
-        score = result.scalar_one()
-        assert score.personalisation == 1
-        assert score.clarity == 1
-        assert score.value_proposition == 1
-        assert score.cta == 1
-        assert score.overall == 1
-        assert score.score_error is False
-        assert "short" in score.notes.lower() or "under 20" in score.notes.lower() or "word" in score.notes.lower()
+        assert result.scalars().all() == []
