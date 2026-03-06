@@ -308,7 +308,7 @@ class TestJobExecutionIntegration:
     @patch("app.services.job_runner.worker_session", _test_worker_session)
     async def test_score_job_completes_via_background_task(self, mock_score, client, db):
         mock_score.return_value = {
-            "scored": 5, "auto_scored": 0, "errors": 0,
+            "scored": 5, "skipped": 0, "errors": 0,
             "total_input_tokens": 100, "total_output_tokens": 50,
         }
         resp = await client.post("/api/operations/score")
@@ -349,7 +349,7 @@ class TestJobExecutionIntegration:
     @patch("app.services.job_runner.worker_session", _test_worker_session)
     async def test_rescore_job_completes_via_background_task(self, mock_score, client, db):
         mock_score.return_value = {
-            "scored": 2, "auto_scored": 0, "errors": 0,
+            "scored": 2, "skipped": 0, "errors": 0,
             "total_input_tokens": 0, "total_output_tokens": 0,
         }
         resp = await client.post("/api/operations/rescore")

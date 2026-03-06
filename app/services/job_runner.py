@@ -150,9 +150,7 @@ async def run_fetch_job(
                 score_result = await score_unscored_emails(
                     s, batch_size=settings.scoring_batch_size
                 )
-                summary["scored"] = score_result.get("scored", 0) + score_result.get(
-                    "auto_scored", 0
-                )
+                summary["scored"] = score_result.get("scored", 0)
                 summary["errors"] = score_result.get("errors", 0)
                 summary["tokens"] = score_result.get(
                     "total_input_tokens", 0
@@ -180,8 +178,7 @@ async def run_score_job(
                 s, batch_size=settings.scoring_batch_size
             )
             summary = {
-                "scored": score_result.get("scored", 0)
-                + score_result.get("auto_scored", 0),
+                "scored": score_result.get("scored", 0),
                 "errors": score_result.get("errors", 0),
                 "tokens": score_result.get("total_input_tokens", 0)
                 + score_result.get("total_output_tokens", 0),
@@ -212,8 +209,7 @@ async def run_rescore_job(
                 s, batch_size=settings.scoring_batch_size
             )
             summary = {
-                "scored": score_result.get("scored", 0)
-                + score_result.get("auto_scored", 0),
+                "scored": score_result.get("scored", 0),
                 "errors": score_result.get("errors", 0),
                 "tokens": score_result.get("total_input_tokens", 0)
                 + score_result.get("total_output_tokens", 0),

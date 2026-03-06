@@ -110,7 +110,7 @@ class TestRunFetchJob:
         self, mock_fetch, mock_score, db, make_job, make_settings
     ):
         mock_score.return_value = {
-            "scored": 2, "auto_scored": 0, "errors": 0,
+            "scored": 2, "skipped": 0, "errors": 0,
             "total_input_tokens": 100, "total_output_tokens": 50,
         }
         await make_settings(auto_score_after_fetch=True)
@@ -144,7 +144,7 @@ class TestRunFetchJob:
         self, mock_fetch, mock_score, db, make_job, make_settings
     ):
         mock_score.return_value = {
-            "scored": 2, "auto_scored": 0, "errors": 0,
+            "scored": 2, "skipped": 0, "errors": 0,
             "total_input_tokens": 0, "total_output_tokens": 0,
         }
         await make_settings(auto_score_after_fetch=True, scoring_batch_size=15)
@@ -182,7 +182,7 @@ class TestRunFetchJob:
         self, mock_fetch, mock_score, db, make_job, make_settings
     ):
         mock_score.return_value = {
-            "scored": 3, "auto_scored": 0, "errors": 0,
+            "scored": 3, "skipped": 0, "errors": 0,
             "total_input_tokens": 500, "total_output_tokens": 200,
         }
         await make_settings(auto_score_after_fetch=True)
@@ -222,7 +222,7 @@ class TestRunFetchJobAutoScoreOverride:
         self, mock_fetch, mock_score, db, make_job, make_settings
     ):
         mock_score.return_value = {
-            "scored": 2, "auto_scored": 0, "errors": 0,
+            "scored": 2, "skipped": 0, "errors": 0,
             "total_input_tokens": 100, "total_output_tokens": 50,
         }
         await make_settings(auto_score_after_fetch=False)
@@ -256,7 +256,7 @@ class TestRunFetchJobAutoScoreOverride:
         self, mock_fetch, mock_score, db, make_job, make_settings
     ):
         mock_score.return_value = {
-            "scored": 2, "auto_scored": 0, "errors": 0,
+            "scored": 2, "skipped": 0, "errors": 0,
             "total_input_tokens": 0, "total_output_tokens": 0,
         }
         await make_settings(auto_score_after_fetch=True)
@@ -366,7 +366,7 @@ class TestRunScoreJob:
     @patch("app.services.job_runner.score_unscored_emails", new_callable=AsyncMock)
     async def test_sets_running_then_completed(self, mock_score, db, make_job):
         mock_score.return_value = {
-            "scored": 0, "auto_scored": 0, "errors": 0,
+            "scored": 0, "skipped": 0, "errors": 0,
             "total_input_tokens": 0, "total_output_tokens": 0,
         }
         job = await make_job(job_type=JobType.SCORE)
@@ -384,7 +384,7 @@ class TestRunScoreJob:
     @patch("app.services.job_runner.score_unscored_emails", new_callable=AsyncMock)
     async def test_reads_scoring_batch_size(self, mock_score, db, make_job, make_settings):
         mock_score.return_value = {
-            "scored": 0, "auto_scored": 0, "errors": 0,
+            "scored": 0, "skipped": 0, "errors": 0,
             "total_input_tokens": 0, "total_output_tokens": 0,
         }
         await make_settings(scoring_batch_size=8)
@@ -402,7 +402,7 @@ class TestRunScoreJob:
     @patch("app.services.job_runner.score_unscored_emails", new_callable=AsyncMock)
     async def test_writes_result_summary(self, mock_score, db, make_job):
         mock_score.return_value = {
-            "scored": 10, "auto_scored": 2, "errors": 1,
+            "scored": 10, "skipped": 2, "errors": 1,
             "total_input_tokens": 5000, "total_output_tokens": 1000,
         }
         job = await make_job(job_type=JobType.SCORE)
@@ -414,7 +414,7 @@ class TestRunScoreJob:
 
         result = await db.execute(select(Job).where(Job.job_id == job.job_id))
         updated = result.scalar_one()
-        assert updated.result_summary["scored"] == 12  # scored + auto_scored
+        assert updated.result_summary["scored"] == 10
         assert updated.result_summary["errors"] == 1
         assert updated.result_summary["tokens"] == 6000
 
@@ -425,7 +425,7 @@ class TestRunRescoreJob:
         self, mock_score, db, make_job, make_email, make_score
     ):
         mock_score.return_value = {
-            "scored": 1, "auto_scored": 0, "errors": 0,
+            "scored": 1, "skipped": 0, "errors": 0,
             "total_input_tokens": 0, "total_output_tokens": 0,
         }
         email = await make_email()
@@ -454,7 +454,7 @@ class TestRunRescoreJob:
         self, mock_score, db, make_job, make_email, make_score
     ):
         mock_score.return_value = {
-            "scored": 2, "auto_scored": 0, "errors": 0,
+            "scored": 2, "skipped": 0, "errors": 0,
             "total_input_tokens": 0, "total_output_tokens": 0,
         }
         e1 = await make_email(from_email="a@test.com")
