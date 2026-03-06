@@ -6,6 +6,7 @@ from datetime import date
 from typing import Optional
 
 from app.services.job_runner import (
+    run_chain_build_job,
     run_export_job,
     run_fetch_job,
     run_rescore_job,
@@ -99,4 +100,13 @@ def export_task(job_id: int, output_path: str = "export.xlsx") -> None:
         run_export_job(None, job_id, output_path),
         job_id,
         "EXPORT",
+    )
+
+
+def chain_build_task(job_id: int) -> None:
+    """RQ-compatible synchronous wrapper for run_chain_build_job."""
+    _run_with_error_handling(
+        run_chain_build_job(None, job_id),
+        job_id,
+        "CHAIN_BUILD",
     )

@@ -1,4 +1,4 @@
-"""Job runners for fetch, score, rescore, and export operations."""
+"""Job runners for fetch, score, rescore, export, and chain build operations."""
 
 import logging
 from contextlib import asynccontextmanager
@@ -15,6 +15,7 @@ from app.enums import JobStatus, JobType
 from app.models.email import Email
 from app.models.job import Job
 from app.models.score import Score
+from app.services.chain_builder import build_chains
 from app.services.export import export_to_excel
 from app.services.fetcher import fetch_and_store
 from app.services.scorer import score_unscored_emails
@@ -145,6 +146,8 @@ async def run_fetch_job(
 
             summary: dict = {"fetched": fetched_count, "new_reps": new_reps_count}
 
+            await build_chains(s)
+
             should_score = auto_score if auto_score is not None else settings.auto_score_after_fetch
             if should_score:
                 score_result = await score_unscored_emails(
@@ -235,6 +238,24 @@ async def run_export_job(
 
             path = await export_to_excel(s, output_path)
             _set_completed(job, {"output_path": path})
+            await s.flush()
+
+        except Exception as exc:
+            await _fail_job(s, job_id, exc)
+
+
+async def run_chain_build_job(
+    session: Optional[AsyncSession], job_id: int
+) -> None:
+    async with _session_scope(session) as s:
+        try:
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
+            _set_running(job)
+            await s.flush()
+
+            chain_result = await build_chains(s)
+            _set_completed(job, chain_result)
             await s.flush()
 
         except Exception as exc:
