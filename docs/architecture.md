@@ -200,6 +200,22 @@ Returns the number of emails stored.
 
 `SCORING_SYSTEM_PROMPT` instructs Claude to return a JSON object with four 1-10 scores (personalisation, clarity, value_proposition, cta) and a notes field. The overall score is now app-calculated from configurable weights in settings. Responses are validated through the `ScoringResult` Pydantic model.
 
+## Chain Builder
+
+`app/services/chain_builder.py` groups emails into conversation chains. The entry point is `build_chains(session)`, which:
+
+1. Loads all emails ordered by timestamp.
+2. Runs three matching passes in priority order:
+   - **Message-ID threading**: Links emails where one's `in_reply_to` matches another's `message_id`.
+   - **Thread-ID grouping**: Groups unchained emails that share the same HubSpot `thread_id`. Does not merge chains already formed by message-ID matching.
+   - **Subject + participant fallback**: Groups remaining unchained emails by normalized subject, at least one overlapping participant (`from_email` or `to_email`), and timestamps within 30 days.
+3. For each group of 2+ emails: creates an `EmailChain` row with `normalized_subject`, sorted comma-separated `participants`, `started_at`, `last_activity_at`, `email_count`, `outgoing_count`, `incoming_count`. Sets `chain_id` and `position_in_chain` (1-based, by timestamp) on each email.
+4. Returns a dict with `chains_created`, `chains_updated`, and `emails_linked` counts.
+
+The service is idempotent - running it twice produces the same result. Existing chain assignments are cleared and rebuilt on each run.
+
+`normalize_subject(subject)` is a pure function that recursively strips `Re:`, `RE:`, `Fwd:`, `FW:`, `Fw:` prefixes and trims whitespace. Returns empty string for `None` input.
+
 ## Exporter
 
 `app/services/export.py` generates an Excel workbook from scored email data. The entry point is `export_to_excel(session, output_path)`, which:
@@ -256,6 +272,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 | `POST /api/operations/score` | 202 with job record. Rejects 409 if SCORE or RESCORE is RUNNING. |
 | `POST /api/operations/rescore` | 202 with job record. Rejects 409 if SCORE or RESCORE is RUNNING. |
 | `POST /api/operations/export` | 202 with job record. |
+| `POST /api/operations/chain-build` | 202 with job record. Rejects 409 if a CHAIN_BUILD job is RUNNING. |
 | `GET /api/operations/jobs` | List of `JobResponse` ordered by created_at desc |
 | `GET /api/operations/jobs/{job_id}` | Single `JobResponse` |
 | `GET /api/operations/last-run` | Most recent completed job per type (or null) |
@@ -302,10 +319,11 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 
 `app/tasks.py` provides synchronous wrapper functions (`fetch_task`, `score_task`, `rescore_task`, `export_task`) for RQ. Each calls `asyncio.run()` on the corresponding async runner with `session=None`, so the runner creates its own session.
 
-- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count, auto_score)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided), calls `fetch_and_store` with company_domains and optional `end_date`/`max_count`. Runs scoring after fetch when `auto_score` is true, or when `auto_score` is None and the `auto_score_after_fetch` setting is true. Result summary includes `fetched`, `new_reps`, and optionally `scored`, `errors`, `tokens`.
+- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count, auto_score)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided), calls `fetch_and_store` with company_domains and optional `end_date`/`max_count`. Runs `build_chains` after fetch to group emails into conversation chains. Runs scoring after chain building when `auto_score` is true, or when `auto_score` is None and the `auto_score_after_fetch` setting is true. Result summary includes `fetched`, `new_reps`, and optionally `scored`, `errors`, `tokens`.
 - `run_score_job(session, job_id)` — reads `scoring_batch_size` from settings, calls `score_unscored_emails`. Result summary includes `scored`, `errors`, `tokens`.
 - `run_rescore_job(session, job_id)` — deletes all existing scores, then calls `score_unscored_emails` to score every email.
 - `run_export_job(session, job_id, output_path)` — generates Excel via `export_to_excel`, stores path in result summary.
+- `run_chain_build_job(session, job_id)` — calls `build_chains`, stores result summary with `chains_created`, `chains_updated`, and `emails_linked` counts.
 
 No FULL_RUN job type. A FETCH job can handle both fetch and score phases. The `auto_score` request parameter controls scoring per-fetch; when omitted, the `auto_score_after_fetch` setting applies. Cron POSTs to `/api/operations/fetch` and the setting controls the default behaviour. The UI exposes a "Score after fetch" checkbox initialised from the setting, allowing per-fetch override.
 

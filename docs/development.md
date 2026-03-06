@@ -216,12 +216,13 @@ email-reviewer/
 │   │   ├── settings.py       # SettingsResponse, SettingsUpdate
 │   │   └── job.py            # JobResponse, JobSummaryResponse, LastRunResponse
 │   ├── services/             # Business logic
+│   │   ├── chain_builder.py   # Email conversation chain grouping
 │   │   ├── export.py         # Excel export of scores and rep averages
 │   │   ├── fetcher.py        # HubSpot email fetch and upsert
 │   │   ├── rep.py            # Dashboard queries (team, rep emails, stats)
 │   │   ├── scorer.py         # Claude API email scoring
 │   │   ├── settings.py       # Settings CRUD (get_settings, update_settings)
-│   │   └── job_runner.py     # Job execution (fetch, score, rescore, export)
+│   │   └── job_runner.py     # Job execution (fetch, score, rescore, export, chain build)
 │   ├── static/               # Static assets
 │   │   └── css/
 │   │       ├── input.css     # Tailwind CSS input (import directive)
@@ -259,6 +260,7 @@ email-reviewer/
 │   ├── test_main.py          # Health endpoint
 │   ├── test_enums.py         # Enum values
 │   ├── test_models.py        # Model registration and relationships
+│   ├── test_chain_builder.py  # Chain builder service
 │   ├── test_chain_schema.py  # Chain score schema validation
 │   ├── test_email_schema.py  # Schema validation
 │   ├── test_api_router.py    # JSON API endpoints

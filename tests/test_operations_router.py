@@ -44,6 +44,12 @@ class TestPostOperations:
         assert resp.status_code == 202
         assert "job_id" in resp.json()
 
+    @patch("app.routers.operations.run_chain_build_job", new_callable=AsyncMock)
+    async def test_chain_build_returns_202(self, mock_run, client):
+        resp = await client.post("/api/operations/chain-build")
+        assert resp.status_code == 202
+        assert "job_id" in resp.json()
+
 
 class TestGetJobs:
     @patch("app.routers.operations.run_fetch_job", new_callable=AsyncMock)

@@ -523,3 +523,60 @@ class TestRunExportJobFailure:
         updated = result.scalar_one()
         assert updated.status == JobStatus.FAILED
         assert "Disk full" in updated.error_message
+
+
+class TestRunChainBuildJob:
+    @patch("app.services.job_runner.build_chains", new_callable=AsyncMock)
+    async def test_sets_running_then_completed(self, mock_build, db, make_job):
+        mock_build.return_value = {
+            "chains_created": 3, "chains_updated": 0, "emails_linked": 8,
+        }
+        job = await make_job(job_type=JobType.CHAIN_BUILD)
+        await db.commit()
+
+        from app.services.job_runner import run_chain_build_job
+
+        await run_chain_build_job(db, job.job_id)
+
+        result = await db.execute(select(Job).where(Job.job_id == job.job_id))
+        updated = result.scalar_one()
+        assert updated.status == JobStatus.COMPLETED
+        assert updated.started_at is not None
+        assert updated.completed_at is not None
+
+    @patch("app.services.job_runner.build_chains", new_callable=AsyncMock)
+    async def test_writes_result_summary(self, mock_build, db, make_job):
+        mock_build.return_value = {
+            "chains_created": 5, "chains_updated": 2, "emails_linked": 12,
+        }
+        job = await make_job(job_type=JobType.CHAIN_BUILD)
+        await db.commit()
+
+        from app.services.job_runner import run_chain_build_job
+
+        await run_chain_build_job(db, job.job_id)
+
+        result = await db.execute(select(Job).where(Job.job_id == job.job_id))
+        updated = result.scalar_one()
+        assert updated.result_summary["chains_created"] == 5
+        assert updated.result_summary["emails_linked"] == 12
+
+
+class TestRunFetchJobChainsBuilding:
+    @patch("app.services.job_runner.build_chains", new_callable=AsyncMock)
+    @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=5)
+    async def test_fetch_invokes_chain_building(
+        self, mock_fetch, mock_build, db, make_job, make_settings
+    ):
+        mock_build.return_value = {
+            "chains_created": 1, "chains_updated": 0, "emails_linked": 2,
+        }
+        await make_settings(auto_score_after_fetch=False)
+        job = await make_job(job_type=JobType.FETCH)
+        await db.commit()
+
+        from app.services.job_runner import run_fetch_job
+
+        await run_fetch_job(db, job.job_id)
+
+        mock_build.assert_called_once()
