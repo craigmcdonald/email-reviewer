@@ -14,6 +14,7 @@ from app.models.rep import Rep
 BASE_URL = "https://api.hubapi.com"
 REQUEST_DELAY = 0.15
 MAX_RETRIES = 5
+MAX_SEARCH_RESULTS = 10000
 PAGE_SIZE = 100
 
 PROPERTIES = [
@@ -130,16 +131,62 @@ def _parse_email(result: dict) -> dict:
     }
 
 
-def fetch_emails_from_hubspot(
-    access_token: str,
+def _fetch_single_page(headers: dict, body: dict) -> dict:
+    """Make a single HubSpot search request with retry logic. Returns parsed JSON."""
+    retries = 0
+    resp = None
+
+    while retries < MAX_RETRIES:
+        resp = requests.post(
+            f"{BASE_URL}/crm/v3/objects/emails/search",
+            headers=headers,
+            json=body,
+        )
+
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", 10))
+            time.sleep(retry_after)
+            retries += 1
+            continue
+        elif resp.status_code >= 500:
+            retries += 1
+            time.sleep(2**retries)
+            continue
+        elif resp.status_code != 200:
+            # 4xx client errors (except 429) are permanent — fail immediately
+            import json as _json
+
+            raise RuntimeError(
+                f"HubSpot API request failed with HTTP {resp.status_code}\n"
+                f"Response: {resp.text[:500]}\n"
+                f"Request body: {_json.dumps(body)}"
+            )
+
+        break
+    else:
+        import json as _json
+
+        raise RuntimeError(
+            f"HubSpot API request failed after {MAX_RETRIES} retries "
+            f"(HTTP {resp.status_code})\n"
+            f"Response: {resp.text[:500]}\n"
+            f"Request body: {_json.dumps(body)}"
+        )
+
+    return resp.json()
+
+
+def _fetch_range(
+    headers: dict,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    max_results: Optional[int] = None,
 ) -> list[dict]:
-    """Fetch all emails from HubSpot CRM v3 search API with pagination and retry."""
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
+    """Fetch emails in a date range, paginating up to max_results or the 10K limit.
+
+    When pagination hits the 10,000 ceiling, subdivides the time range into halves
+    and fetches each recursively. Requires both start_date and end_date for subdivision.
+    """
     all_emails: list[dict] = []
     after: Optional[str] = None
 
@@ -147,47 +194,82 @@ def fetch_emails_from_hubspot(
         body = _build_search_body(
             start_date=start_date, end_date=end_date, after=after
         )
-        retries = 0
-
-        while retries < MAX_RETRIES:
-            resp = requests.post(
-                f"{BASE_URL}/crm/v3/objects/emails/search",
-                headers=headers,
-                json=body,
-            )
-
-            if resp.status_code == 429:
-                retry_after = int(resp.headers.get("Retry-After", 10))
-                time.sleep(retry_after)
-                retries += 1
-                continue
-            elif resp.status_code != 200:
-                retries += 1
-                time.sleep(2**retries)
-                continue
-
-            break
-        else:
-            raise RuntimeError(
-                f"HubSpot API request failed after {MAX_RETRIES} retries "
-                f"(HTTP {resp.status_code}: {resp.text[:200]})"
-            )
-
-        data = resp.json()
+        data = _fetch_single_page(headers, body)
 
         for result in data.get("results", []):
             all_emails.append(result)
+
+        if max_results and len(all_emails) >= max_results:
+            return all_emails[:max_results]
 
         paging = data.get("paging", {})
         next_page = paging.get("next", {})
         after = next_page.get("after")
 
         if not after:
+            return all_emails
+
+        if int(after) >= MAX_SEARCH_RESULTS:
             break
 
         time.sleep(REQUEST_DELAY)
 
-    return all_emails
+    # Hit 10K limit — subdivide the time range and fetch each half
+    if not start_date or not end_date:
+        return all_emails
+
+    midpoint = start_date + (end_date - start_date) / 2
+    if midpoint <= start_date or midpoint >= end_date:
+        return all_emails
+
+    remaining = max_results - len(all_emails) if max_results else None
+    first_half = _fetch_range(
+        headers, start_date=start_date, end_date=midpoint, max_results=remaining
+    )
+
+    remaining = max_results - len(all_emails) - len(first_half) if max_results else None
+    if max_results and remaining is not None and remaining <= 0:
+        return (all_emails + first_half)[:max_results]
+
+    second_half = _fetch_range(
+        headers, start_date=midpoint, end_date=end_date, max_results=remaining
+    )
+
+    # Deduplicate by HubSpot ID since the midpoint boundary may overlap
+    seen: set[str] = set()
+    combined: list[dict] = []
+    for email in all_emails + first_half + second_half:
+        eid = email.get("id")
+        if eid not in seen:
+            seen.add(eid)
+            combined.append(email)
+
+    if max_results:
+        return combined[:max_results]
+    return combined
+
+
+def fetch_emails_from_hubspot(
+    access_token: str,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    max_results: Optional[int] = None,
+) -> list[dict]:
+    """Fetch emails from HubSpot CRM v3 search API with pagination and retry.
+
+    When a date range contains more than 10,000 results (HubSpot's paging limit),
+    the range is automatically subdivided into smaller windows.
+
+    max_results stops pagination early once enough raw results are collected.
+    This is applied to raw HubSpot results before any outgoing/domain filtering.
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    return _fetch_range(
+        headers, start_date=start_date, end_date=end_date, max_results=max_results
+    )
 
 
 async def upsert_emails_to_db(
@@ -265,10 +347,13 @@ async def fetch_and_store(
     number of raw results fetched from HubSpot. Returns the number of emails
     stored.
     """
+    # Fetch 1.5x max_count to account for non-outgoing emails being filtered out
+    raw_limit = int(max_count * 1.5) if max_count is not None else None
     raw_emails = fetch_emails_from_hubspot(
         access_token,
         start_date=start_date,
         end_date=end_date,
+        max_results=raw_limit,
     )
     outgoing = filter_outgoing_emails(raw_emails, company_domains)
     if max_count is not None:

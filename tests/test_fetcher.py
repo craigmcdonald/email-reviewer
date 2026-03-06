@@ -226,13 +226,70 @@ class TestFetchEmailsFromHubspot:
 
     @patch("app.services.fetcher.requests.post")
     @patch("app.services.fetcher.time.sleep")
-    def test_raises_on_retry_exhaustion(self, mock_sleep, mock_post):
+    def test_subdivides_when_hitting_10000_limit(self, mock_sleep, mock_post):
+        from datetime import datetime
+
+        # First call for full range hits 10K limit
+        full_range_page = MagicMock(status_code=200)
+        full_range_page.json.return_value = make_hubspot_response(
+            [OUTGOING_SALES_EMAIL], total=15000, after="10000"
+        )
+        # Subdivision calls return smaller result sets
+        half_page = MagicMock(status_code=200)
+        half_page.json.return_value = make_hubspot_response(
+            [OUTGOING_SALES_EMAIL], total=100
+        )
+        mock_post.side_effect = [full_range_page, half_page, half_page]
+
+        start = datetime(2026, 1, 1)
+        end = datetime(2026, 3, 1)
+        result = fetch_emails_from_hubspot("token", start_date=start, end_date=end)
+        # Should have fetched subdivision ranges after hitting limit
+        assert mock_post.call_count == 3
+        assert len(result) >= 1
+
+    @patch("app.services.fetcher.requests.post")
+    def test_raises_immediately_on_4xx_client_error(self, mock_post):
+        resp = MagicMock(status_code=400)
+        resp.text = '{"status":"error","message":"Bad request"}'
+        mock_post.return_value = resp
+
+        with pytest.raises(RuntimeError, match="HTTP 400"):
+            fetch_emails_from_hubspot("token")
+        assert mock_post.call_count == 1
+
+    @patch("app.services.fetcher.requests.post")
+    def test_raises_immediately_on_401_unauthorized(self, mock_post):
         resp = MagicMock(status_code=401)
         resp.text = "Unauthorized"
         mock_post.return_value = resp
 
-        with pytest.raises(RuntimeError, match="failed after 5 retries"):
+        with pytest.raises(RuntimeError, match="HTTP 401"):
             fetch_emails_from_hubspot("bad-token")
+        assert mock_post.call_count == 1
+
+    @patch("app.services.fetcher.requests.post")
+    @patch("app.services.fetcher.time.sleep")
+    def test_retries_on_5xx_then_raises(self, mock_sleep, mock_post):
+        resp = MagicMock(status_code=502)
+        resp.text = "Bad Gateway"
+        mock_post.return_value = resp
+
+        with pytest.raises(RuntimeError, match="failed after 5 retries"):
+            fetch_emails_from_hubspot("token")
+
+    @patch("app.services.fetcher.requests.post")
+    @patch("app.services.fetcher.time.sleep")
+    def test_retries_on_429_rate_limit(self, mock_sleep, mock_post):
+        rate_limit_resp = MagicMock(status_code=429)
+        rate_limit_resp.headers = {"Retry-After": "1"}
+        ok_resp = MagicMock(status_code=200)
+        ok_resp.json.return_value = {"results": [], "paging": {}}
+        mock_post.side_effect = [rate_limit_resp, ok_resp]
+
+        result = fetch_emails_from_hubspot("token")
+        assert result == []
+        assert mock_post.call_count == 2
 
     @patch("app.services.fetcher.requests.post")
     def test_handles_malformed_response(self, mock_post):
