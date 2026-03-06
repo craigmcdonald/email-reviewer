@@ -148,10 +148,19 @@ def _fetch_single_page(headers: dict, body: dict) -> dict:
             time.sleep(retry_after)
             retries += 1
             continue
-        elif resp.status_code != 200:
+        elif resp.status_code >= 500:
             retries += 1
             time.sleep(2**retries)
             continue
+        elif resp.status_code != 200:
+            # 4xx client errors (except 429) are permanent — fail immediately
+            import json as _json
+
+            raise RuntimeError(
+                f"HubSpot API request failed with HTTP {resp.status_code}\n"
+                f"Response: {resp.text[:500]}\n"
+                f"Request body: {_json.dumps(body)}"
+            )
 
         break
     else:
