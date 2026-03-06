@@ -66,10 +66,10 @@ def upgrade() -> None:
     op.add_column('settings', sa.Column('initial_email_prompt', sa.Text(), nullable=True))
     op.add_column('settings', sa.Column('chain_email_prompt', sa.Text(), nullable=True))
     op.add_column('settings', sa.Column('chain_evaluation_prompt', sa.Text(), nullable=True))
-    op.add_column('settings', sa.Column('weight_value_proposition', sa.Float(), nullable=False))
-    op.add_column('settings', sa.Column('weight_personalisation', sa.Float(), nullable=False))
-    op.add_column('settings', sa.Column('weight_cta', sa.Float(), nullable=False))
-    op.add_column('settings', sa.Column('weight_clarity', sa.Float(), nullable=False))
+    op.add_column('settings', sa.Column('weight_value_proposition', sa.Float(), nullable=False, server_default='0.35'))
+    op.add_column('settings', sa.Column('weight_personalisation', sa.Float(), nullable=False, server_default='0.30'))
+    op.add_column('settings', sa.Column('weight_cta', sa.Float(), nullable=False, server_default='0.20'))
+    op.add_column('settings', sa.Column('weight_clarity', sa.Float(), nullable=False, server_default='0.15'))
     # ### end Alembic commands ###
 
 
