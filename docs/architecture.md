@@ -269,7 +269,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 
 | Route | View |
 |-------|------|
-| `GET /settings` | Settings form and operations panel (HTML, excluded from OpenAPI) |
+| `GET /settings` | Tabbed settings page (HTML, excluded from OpenAPI). Accepts `?tab=` query parameter: `general` (default), `scoring`, `chain-evaluation`. All tab content is rendered server-side; JS toggles visibility. |
 
 ### JSON API (`app/routers/api.py`)
 
@@ -286,6 +286,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 |-------|----------|
 | `GET /api/settings` | Current `SettingsResponse` |
 | `PATCH /api/settings` | Partial update, returns updated `SettingsResponse` |
+| `GET /api/settings/defaults` | Default prompt texts for `initial_email_prompt`, `chain_email_prompt`, `chain_evaluation_prompt`. Powers "Reset to Default" buttons. |
 
 ### Operations API (`app/routers/operations.py`)
 

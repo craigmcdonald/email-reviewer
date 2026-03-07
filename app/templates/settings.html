@@ -3,75 +3,86 @@
 {% block title %}Settings — Email Reviewer{% endblock %}
 
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-    <!-- Settings Form -->
-    <section>
-        <h1 class="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
-        <form id="settings-form" class="space-y-6 bg-white shadow rounded-lg p-6">
-            <div>
-                <label for="global_start_date" class="block text-sm font-medium text-gray-700">Global Start Date</label>
-                <input type="date" id="global_start_date" name="global_start_date"
-                       value="{{ settings.global_start_date }}"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                <p class="mt-1 text-xs text-gray-500">Floor for all fetches. Nothing before this date is fetched from HubSpot.</p>
-            </div>
+<h1 class="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
 
-            <div>
-                <label for="company_domains" class="block text-sm font-medium text-gray-700">Company Domains</label>
-                <textarea id="company_domains" name="company_domains" rows="3"
-                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ settings.company_domains }}</textarea>
-                <p class="mt-1 text-xs text-gray-500">Comma-separated list of domains used to filter outgoing emails.</p>
-            </div>
+<!-- Tab Bar -->
+<div class="border-b border-gray-200 mb-6">
+    <nav class="flex gap-4" aria-label="Settings tabs">
+        <button type="button" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px" data-tab="general">General</button>
+        <button type="button" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px" data-tab="scoring">Scoring</button>
+        <button type="button" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px" data-tab="chain-evaluation">Chain Evaluation</button>
+    </nav>
+</div>
 
-            <div>
-                <label for="scoring_batch_size" class="block text-sm font-medium text-gray-700">Scoring Batch Size</label>
-                <input type="number" id="scoring_batch_size" name="scoring_batch_size" min="1"
-                       value="{{ settings.scoring_batch_size }}"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-                <p class="mt-1 text-xs text-gray-500">Concurrency limit for Claude API calls.</p>
-            </div>
+<!-- General Tab -->
+<div id="tab-general" class="tab-content">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <section>
+            <form id="settings-form" class="space-y-6 bg-white shadow rounded-lg p-6">
+                <div>
+                    <label for="global_start_date" class="block text-sm font-medium text-gray-700">Global Start Date</label>
+                    <input type="date" id="global_start_date" name="global_start_date"
+                           value="{{ settings.global_start_date }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500">Floor for all fetches. Nothing before this date is fetched from HubSpot.</p>
+                </div>
 
-            <div class="flex items-center gap-3">
-                <input type="checkbox" id="auto_score_after_fetch" name="auto_score_after_fetch"
-                       {% if settings.auto_score_after_fetch %}checked{% endif %}
-                       class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                <label for="auto_score_after_fetch" class="text-sm font-medium text-gray-700">Auto-score after fetch</label>
-            </div>
+                <div>
+                    <label for="company_domains" class="block text-sm font-medium text-gray-700">Company Domains</label>
+                    <textarea id="company_domains" name="company_domains" rows="3"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">{{ settings.company_domains }}</textarea>
+                    <p class="mt-1 text-xs text-gray-500">Comma-separated list of domains used to filter outgoing emails.</p>
+                </div>
 
-            <button type="submit"
-                    class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                Save Settings
-            </button>
-        </form>
-    </section>
+                <div>
+                    <label for="scoring_batch_size" class="block text-sm font-medium text-gray-700">Scoring Batch Size</label>
+                    <input type="number" id="scoring_batch_size" name="scoring_batch_size" min="1"
+                           value="{{ settings.scoring_batch_size }}"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500">Concurrency limit for Claude API calls.</p>
+                </div>
 
-    {% if dev_mode %}
-    <!-- Dev Mode -->
-    <section>
-        <h1 class="text-2xl font-bold text-gray-900 mb-6">Dev Mode</h1>
-        <div class="space-y-4 bg-white shadow rounded-lg p-6">
-            <div>
-                <label for="fetch_start_date" class="block text-sm font-medium text-gray-700">Fetch Start Date</label>
-                <input type="date" id="fetch_start_date"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="auto_score_after_fetch" name="auto_score_after_fetch"
+                           {% if settings.auto_score_after_fetch %}checked{% endif %}
+                           class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <label for="auto_score_after_fetch" class="text-sm font-medium text-gray-700">Auto-score after fetch</label>
+                </div>
+
+                <button type="submit"
+                        class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    Save Settings
+                </button>
+            </form>
+        </section>
+
+        {% if dev_mode %}
+        <section>
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Dev Mode</h2>
+            <div class="space-y-4 bg-white shadow rounded-lg p-6">
+                <div>
+                    <label for="fetch_start_date" class="block text-sm font-medium text-gray-700">Fetch Start Date</label>
+                    <input type="date" id="fetch_start_date"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="fetch_end_date" class="block text-sm font-medium text-gray-700">Fetch End Date</label>
+                    <input type="date" id="fetch_end_date"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="fetch_max_count" class="block text-sm font-medium text-gray-700">Max Emails</label>
+                    <input type="number" id="fetch_max_count" min="1" value="100"
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
             </div>
-            <div>
-                <label for="fetch_end_date" class="block text-sm font-medium text-gray-700">Fetch End Date</label>
-                <input type="date" id="fetch_end_date"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-            </div>
-            <div>
-                <label for="fetch_max_count" class="block text-sm font-medium text-gray-700">Max Emails</label>
-                <input type="number" id="fetch_max_count" min="1" value="100"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
-            </div>
-        </div>
-    </section>
-    {% endif %}
+        </section>
+        {% endif %}
+    </div>
 
     <!-- Operations Panel -->
-    <section>
-        <h1 class="text-2xl font-bold text-gray-900 mb-6">Operations</h1>
+    <section class="mt-8">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Operations</h2>
         <div class="space-y-4 bg-white shadow rounded-lg p-6">
             <div class="flex items-center justify-between">
                 <div class="min-w-0">
@@ -111,6 +122,14 @@
                 <button onclick="startOperation('export')"
                         class="rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700">Export</button>
             </div>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900">Rebuild Chains</h3>
+                    <p class="text-xs text-gray-500">Re-build email conversation chains.</p>
+                </div>
+                <button onclick="startOperation('chain-build')"
+                        class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">Rebuild Chains</button>
+            </div>
         </div>
 
         <!-- Recent Jobs -->
@@ -121,6 +140,119 @@
     </section>
 </div>
 
+<!-- Scoring Tab -->
+<div id="tab-scoring" class="tab-content">
+    <div class="space-y-8">
+        <section class="bg-white shadow rounded-lg p-6">
+            <div class="space-y-6">
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="initial_email_prompt" class="block text-sm font-medium text-gray-700">Initial Email Prompt</label>
+                        <button type="button" onclick="resetToDefault('initial_email_prompt')"
+                                class="text-xs text-blue-600 hover:text-blue-800">Reset to Default</button>
+                    </div>
+                    <textarea id="initial_email_prompt" name="initial_email_prompt" rows="8"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.initial_email_prompt }}</textarea>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="chain_email_prompt" class="block text-sm font-medium text-gray-700">Follow-up Email Prompt</label>
+                        <button type="button" onclick="resetToDefault('chain_email_prompt')"
+                                class="text-xs text-blue-600 hover:text-blue-800">Reset to Default</button>
+                    </div>
+                    <textarea id="chain_email_prompt" name="chain_email_prompt" rows="8"
+                              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.chain_email_prompt }}</textarea>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Scoring Weights</h2>
+            <p class="text-xs text-gray-500 mb-4">Weights must sum to 1.0.</p>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="weight_value_proposition" class="block text-sm font-medium text-gray-700">Value Proposition</label>
+                    <input type="number" id="weight_value_proposition" name="weight_value_proposition"
+                           step="0.05" min="0" max="1" value="{{ settings.weight_value_proposition }}"
+                           class="weight-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="weight_personalisation" class="block text-sm font-medium text-gray-700">Personalisation</label>
+                    <input type="number" id="weight_personalisation" name="weight_personalisation"
+                           step="0.05" min="0" max="1" value="{{ settings.weight_personalisation }}"
+                           class="weight-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="weight_cta" class="block text-sm font-medium text-gray-700">CTA</label>
+                    <input type="number" id="weight_cta" name="weight_cta"
+                           step="0.05" min="0" max="1" value="{{ settings.weight_cta }}"
+                           class="weight-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="weight_clarity" class="block text-sm font-medium text-gray-700">Clarity</label>
+                    <input type="number" id="weight_clarity" name="weight_clarity"
+                           step="0.05" min="0" max="1" value="{{ settings.weight_clarity }}"
+                           class="weight-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                </div>
+            </div>
+            <div class="mt-3 flex items-center gap-3">
+                <span class="text-sm text-gray-600">Sum: <span id="weight-sum" class="font-medium">1.00</span></span>
+                <span id="weight-warning" class="text-sm text-red-600 hidden">Weights must sum to 1.0</span>
+            </div>
+        </section>
+
+        <button type="button" id="save-scoring-btn"
+                class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            Save Scoring Settings
+        </button>
+    </div>
+</div>
+
+<!-- Chain Evaluation Tab -->
+<div id="tab-chain-evaluation" class="tab-content">
+    <div class="space-y-8">
+        <section class="bg-white shadow rounded-lg p-6">
+            <div class="flex items-center justify-between mb-1">
+                <label for="chain_evaluation_prompt" class="block text-sm font-medium text-gray-700">Chain Evaluation Prompt</label>
+                <button type="button" onclick="resetToDefault('chain_evaluation_prompt')"
+                        class="text-xs text-blue-600 hover:text-blue-800">Reset to Default</button>
+            </div>
+            <textarea id="chain_evaluation_prompt" name="chain_evaluation_prompt" rows="10"
+                      class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.chain_evaluation_prompt }}</textarea>
+        </section>
+
+        <section class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Chain Statistics</h2>
+            <div id="chain-stats" class="grid grid-cols-3 gap-4 text-center">
+                <div>
+                    <p class="text-2xl font-bold text-gray-900" id="stat-total-chains">-</p>
+                    <p class="text-xs text-gray-500">Total Chains</p>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold text-gray-900" id="stat-avg-length">-</p>
+                    <p class="text-xs text-gray-500">Avg Chain Length</p>
+                </div>
+                <div>
+                    <p class="text-2xl font-bold text-gray-900" id="stat-chains-scored">-</p>
+                    <p class="text-xs text-gray-500">Chains Scored</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="flex gap-4">
+            <button type="button" onclick="startOperation('score')"
+                    class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
+                Score Unscored Chains
+            </button>
+            <button type="button" id="save-chain-eval-btn"
+                    class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">
+                Save Prompt
+            </button>
+        </div>
+    </div>
+</div>
+
 <style>
 @keyframes pulse-status {
     0%, 100% { opacity: 1; }
@@ -129,9 +261,41 @@
 .status-running {
     animation: pulse-status 1.5s ease-in-out infinite;
 }
+.tab-btn {
+    border-color: transparent;
+    color: #6b7280;
+}
+.tab-btn:hover {
+    color: #1f2937;
+    border-color: #d1d5db;
+}
+.tab-btn.active {
+    color: #2563eb;
+    border-color: #2563eb;
+}
 </style>
 
 <script>
+const activeTab = "{{ active_tab }}";
+
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    const target = document.getElementById('tab-' + tabName);
+    if (target) target.style.display = 'block';
+    const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+    if (btn) btn.classList.add('active');
+    const url = new URL(window.location);
+    url.searchParams.set('tab', tabName);
+    history.replaceState(null, '', url);
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+switchTab(activeTab);
+
 let pollTimer = null;
 
 async function startOperation(type) {
@@ -139,7 +303,7 @@ async function startOperation(type) {
     if (type === 'fetch') {
         const body = {};
         const autoScore = document.getElementById('fetch_auto_score');
-        body.auto_score = autoScore.checked;
+        if (autoScore) body.auto_score = autoScore.checked;
         const startDate = document.getElementById('fetch_start_date');
         const endDate = document.getElementById('fetch_end_date');
         const maxCount = document.getElementById('fetch_max_count');
@@ -257,6 +421,7 @@ function stopPolling() {
     }
 }
 
+// General tab form
 document.getElementById('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {};
@@ -277,6 +442,104 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
     }
 });
 
+// Weight sum calculation
+function updateWeightSum() {
+    const fields = ['weight_value_proposition', 'weight_personalisation', 'weight_cta', 'weight_clarity'];
+    let sum = 0;
+    fields.forEach(f => {
+        const val = parseFloat(document.getElementById(f).value);
+        if (!isNaN(val)) sum += val;
+    });
+    const sumEl = document.getElementById('weight-sum');
+    const warnEl = document.getElementById('weight-warning');
+    sumEl.textContent = sum.toFixed(2);
+    if (Math.abs(sum - 1.0) > 0.001) {
+        sumEl.classList.add('text-red-600');
+        warnEl.classList.remove('hidden');
+    } else {
+        sumEl.classList.remove('text-red-600');
+        warnEl.classList.add('hidden');
+    }
+}
+
+document.querySelectorAll('.weight-input').forEach(el => {
+    el.addEventListener('input', updateWeightSum);
+});
+
+// Scoring tab save
+document.getElementById('save-scoring-btn').addEventListener('click', async () => {
+    const data = {
+        initial_email_prompt: document.getElementById('initial_email_prompt').value,
+        chain_email_prompt: document.getElementById('chain_email_prompt').value,
+        weight_value_proposition: parseFloat(document.getElementById('weight_value_proposition').value),
+        weight_personalisation: parseFloat(document.getElementById('weight_personalisation').value),
+        weight_cta: parseFloat(document.getElementById('weight_cta').value),
+        weight_clarity: parseFloat(document.getElementById('weight_clarity').value),
+    };
+    const resp = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const err = await resp.json();
+        alert(err.detail || 'Save failed');
+    }
+});
+
+// Chain evaluation tab save
+document.getElementById('save-chain-eval-btn').addEventListener('click', async () => {
+    const data = {
+        chain_evaluation_prompt: document.getElementById('chain_evaluation_prompt').value,
+    };
+    const resp = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const err = await resp.json();
+        alert(err.detail || 'Save failed');
+    }
+});
+
+// Reset to default
+async function resetToDefault(field) {
+    try {
+        const resp = await fetch('/api/settings/defaults');
+        if (!resp.ok) return;
+        const defaults = await resp.json();
+        const el = document.getElementById(field);
+        if (el && defaults[field]) {
+            el.value = defaults[field];
+        }
+    } catch (e) {
+        alert('Failed to load defaults: ' + e.message);
+    }
+}
+
+// Load chain stats
+async function loadChainStats() {
+    try {
+        const resp = await fetch('/api/stats');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const totalEl = document.getElementById('stat-total-chains');
+        const avgEl = document.getElementById('stat-avg-length');
+        const scoredEl = document.getElementById('stat-chains-scored');
+        if (totalEl) totalEl.textContent = data.total_chains ?? '-';
+        if (avgEl) avgEl.textContent = data.avg_chain_length != null ? data.avg_chain_length.toFixed(1) : '-';
+        if (scoredEl) scoredEl.textContent = data.chains_scored ?? '-';
+    } catch {
+        // Stats not available
+    }
+}
+
 loadJobs();
+loadChainStats();
 </script>
 {% endblock %}
