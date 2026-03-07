@@ -163,3 +163,93 @@ class TestSettingsPage:
         assert "Fetch Start Date" in html
         assert "Fetch End Date" in html
         assert "Max Emails" in html
+
+    async def test_contains_general_tab(self, client):
+        resp = await client.get("/settings")
+        assert resp.status_code == 200
+        assert "General" in resp.text
+
+    async def test_contains_scoring_tab(self, client):
+        resp = await client.get("/settings")
+        assert resp.status_code == 200
+        assert "Scoring" in resp.text
+
+    async def test_contains_chain_evaluation_tab(self, client):
+        resp = await client.get("/settings")
+        assert resp.status_code == 200
+        assert "Chain Evaluation" in resp.text
+
+    async def test_scoring_tab_contains_weight_input(self, client):
+        resp = await client.get("/settings?tab=scoring")
+        assert resp.status_code == 200
+        assert 'name="weight_value_proposition"' in resp.text
+
+    async def test_chain_evaluation_tab_contains_prompt(self, client):
+        resp = await client.get("/settings?tab=chain-evaluation")
+        assert resp.status_code == 200
+        assert "chain_evaluation_prompt" in resp.text
+
+
+class TestPatchWeightsValidSums:
+    async def test_accepts_weights_summing_to_one_point_zero(self, client):
+        resp = await client.patch(
+            "/api/settings",
+            json={
+                "weight_value_proposition": 0.40,
+                "weight_personalisation": 0.25,
+                "weight_cta": 0.20,
+                "weight_clarity": 0.15,
+            },
+        )
+        assert resp.status_code == 200
+
+    async def test_rejects_weights_summing_to_one_point_zero_five(self, client):
+        resp = await client.patch(
+            "/api/settings",
+            json={
+                "weight_value_proposition": 0.40,
+                "weight_personalisation": 0.30,
+                "weight_cta": 0.20,
+                "weight_clarity": 0.15,
+            },
+        )
+        assert resp.status_code == 422
+
+
+class TestPatchPromptPersistence:
+    async def test_chain_email_prompt_persists(self, client):
+        new_prompt = "Updated chain email prompt for testing"
+        resp = await client.patch(
+            "/api/settings",
+            json={"chain_email_prompt": new_prompt},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["chain_email_prompt"] == new_prompt
+
+        get_resp = await client.get("/api/settings")
+        assert get_resp.json()["chain_email_prompt"] == new_prompt
+
+    async def test_chain_evaluation_prompt_persists(self, client):
+        new_prompt = "Updated chain evaluation prompt for testing"
+        resp = await client.patch(
+            "/api/settings",
+            json={"chain_evaluation_prompt": new_prompt},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["chain_evaluation_prompt"] == new_prompt
+
+        get_resp = await client.get("/api/settings")
+        assert get_resp.json()["chain_evaluation_prompt"] == new_prompt
+
+
+class TestSettingsDefaults:
+    async def test_returns_default_prompts(self, client):
+        resp = await client.get("/api/settings/defaults")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "initial_email_prompt" in data
+        assert "chain_email_prompt" in data
+        assert "chain_evaluation_prompt" in data
+        assert len(data["initial_email_prompt"]) > 0
+        assert len(data["chain_email_prompt"]) > 0
+        assert len(data["chain_evaluation_prompt"]) > 0
