@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Rep
+from app.services.chain import get_chain_detail, get_chains, get_rep_chains
 from app.services.export import export_rep_emails
 from app.services.rep import get_rep_emails, get_team
 from app.templating import templates
@@ -68,6 +69,52 @@ def _parse_int(value: str | None) -> int | None:
     return int(value)
 
 
+@router.get("/chains", include_in_schema=False)
+async def chains_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=0),
+    session: AsyncSession = Depends(get_db),
+):
+    effective_per_page = per_page or 20
+    result = await get_chains(session, page=page, per_page=effective_per_page)
+    start = (page - 1) * effective_per_page + 1 if effective_per_page else 1
+    end = start + len(result["items"]) - 1 if result["items"] else 0
+    return templates.TemplateResponse(
+        request,
+        "chains.html",
+        {
+            "chains": result["items"],
+            "score_class": score_class,
+            "page": result["page"],
+            "per_page": per_page,
+            "total": result["total"],
+            "pages": result["pages"],
+            "start": start,
+            "end": end,
+        },
+    )
+
+
+@router.get("/chains/{chain_id}", include_in_schema=False)
+async def chain_detail_page(
+    chain_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+):
+    chain = await get_chain_detail(session, chain_id)
+    if not chain:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    return templates.TemplateResponse(
+        request,
+        "chain_detail.html",
+        {
+            "chain": chain,
+            "score_class": score_class,
+        },
+    )
+
+
 @router.get("/reps/{rep_email}", include_in_schema=False)
 async def rep_detail(
     rep_email: str,
@@ -104,6 +151,9 @@ async def rep_detail(
         score_min=parsed_score_min,
         score_max=parsed_score_max,
     )
+
+    rep_chains_result = await get_rep_chains(session, rep_email, page=1, per_page=100)
+
     start = (page - 1) * per_page + 1 if per_page else 1
     end = start + len(email_result["items"]) - 1 if email_result["items"] else 0
     return templates.TemplateResponse(
@@ -112,6 +162,7 @@ async def rep_detail(
         {
             "rep": rep,
             "emails": email_result["items"],
+            "chains": rep_chains_result["items"],
             "score_class": score_class,
             "page": email_result["page"],
             "per_page": per_page,

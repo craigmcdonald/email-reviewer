@@ -25,3 +25,5 @@ class RepTeamRow(AppBase):
     avg_value_proposition: Optional[float] = None
     avg_cta: Optional[float] = None
     avg_overall: Optional[float] = None
+    chain_count: Optional[int] = None
+    avg_chain_score: Optional[float] = None

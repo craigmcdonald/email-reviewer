@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ chain.normalized_subject or "Chain" }} - Email Reviewer{% endblock %}
+{% block content %}
+<div class="mb-6">
+    <a href="/chains" class="text-sm text-blue-600 hover:underline">&larr; Back to Chains</a>
+</div>
+<h1 class="text-2xl font-bold mb-2">{{ chain.normalized_subject or "(no subject)" }}</h1>
+<p class="text-gray-500 mb-6">{{ chain.email_count or 0 }} emails &middot; {{ chain.participants or "" }}</p>
+
+{% if chain.chain_score %}
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-semibold mb-4">Chain Score</h2>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div>
+            <div class="text-xs text-gray-500 uppercase">Quality</div>
+            <div class="text-2xl font-bold"><span class="{{ score_class(chain.chain_score.conversation_quality) }}">{{ chain.chain_score.conversation_quality }}</span></div>
+        </div>
+        <div>
+            <div class="text-xs text-gray-500 uppercase">Progression</div>
+            <div class="text-2xl font-bold"><span class="{{ score_class(chain.chain_score.progression) }}">{{ chain.chain_score.progression }}</span></div>
+        </div>
+        <div>
+            <div class="text-xs text-gray-500 uppercase">Responsiveness</div>
+            <div class="text-2xl font-bold"><span class="{{ score_class(chain.chain_score.responsiveness) }}">{{ chain.chain_score.responsiveness }}</span></div>
+        </div>
+        <div>
+            <div class="text-xs text-gray-500 uppercase">Persistence</div>
+            <div class="text-2xl font-bold"><span class="{{ score_class(chain.chain_score.persistence) }}">{{ chain.chain_score.persistence }}</span></div>
+        </div>
+        <div>
+            <div class="text-xs text-gray-500 uppercase">Avg Response</div>
+            <div class="text-2xl font-bold">{{ "%.1f"|format(chain.chain_score.avg_response_hours) if chain.chain_score.avg_response_hours is not none else "—" }}h</div>
+        </div>
+    </div>
+    {% if chain.chain_score.notes %}
+    <p class="mt-4 text-sm text-gray-600 italic">{{ chain.chain_score.notes }}</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<h2 class="text-lg font-semibold mb-4">Conversation Thread</h2>
+<div class="space-y-4">
+    {% for email in chain.emails %}
+    <div class="bg-white rounded-lg shadow p-4 border-l-4 {{ 'border-blue-500' if email.direction == 'EMAIL' else 'border-green-500' }}">
+        <div class="flex justify-between items-start mb-2">
+            <div>
+                <span class="text-xs font-medium px-2 py-0.5 rounded {{ 'bg-blue-100 text-blue-800' if email.direction == 'EMAIL' else 'bg-green-100 text-green-800' }}">
+                    {{ "Outgoing" if email.direction == "EMAIL" else "Incoming" }}
+                </span>
+                <span class="ml-2 text-sm font-medium">{{ email.from_name or email.from_email }}</span>
+                <span class="text-sm text-gray-500"> &rarr; {{ email.to_name or email.to_email or "" }}</span>
+            </div>
+            <span class="text-xs text-gray-500">{{ email.timestamp.strftime("%Y-%m-%d %H:%M") if email.timestamp else "" }}</span>
+        </div>
+        <div class="text-sm text-gray-600 mb-2">{{ email.subject or "(no subject)" }}</div>
+        <pre class="text-sm text-gray-700 whitespace-pre-wrap max-w-3xl">{{ (email.body_text or "")[:500] }}</pre>
+        {% if email.score %}
+        <div class="mt-3 flex gap-4 text-xs">
+            <span>Overall: <span class="{{ score_class(email.score.overall) }}">{{ email.score.overall }}</span></span>
+            <span>Personalisation: <span class="{{ score_class(email.score.personalisation) }}">{{ email.score.personalisation }}</span></span>
+            <span>Clarity: <span class="{{ score_class(email.score.clarity) }}">{{ email.score.clarity }}</span></span>
+            <span>Value Prop: <span class="{{ score_class(email.score.value_proposition) }}">{{ email.score.value_proposition }}</span></span>
+            <span>CTA: <span class="{{ score_class(email.score.cta) }}">{{ email.score.cta }}</span></span>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.schemas.rep import RepTeamRow
-from app.schemas.score import ScoreResponse
 from app.schemas.stats import StatsResponse
+from app.services.chain import get_chain_detail, get_chains, get_rep_chains
 from app.services.rep import get_email_detail, get_rep_emails, get_stats, get_team
 
 router = APIRouter(prefix="/api")
@@ -22,6 +22,8 @@ async def list_reps(session: AsyncSession = Depends(get_db)):
             avg_value_proposition=round(r.avg_value_proposition, 2) if r.avg_value_proposition else None,
             avg_cta=round(r.avg_cta, 2) if r.avg_cta else None,
             avg_overall=round(r.avg_overall, 2) if r.avg_overall else None,
+            chain_count=r.chain_count,
+            avg_chain_score=round(r.avg_chain_score, 2) if r.avg_chain_score else None,
         )
         for r in result["items"]
     ]
@@ -48,6 +50,33 @@ async def list_rep_emails(rep_email: str, session: AsyncSession = Depends(get_db
         }
         for e in result["items"]
     ]
+
+
+@router.get("/reps/{rep_email}/chains")
+async def list_rep_chains(
+    rep_email: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
+    session: AsyncSession = Depends(get_db),
+):
+    return await get_rep_chains(session, rep_email, page=page, per_page=per_page)
+
+
+@router.get("/chains")
+async def list_chains(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
+    session: AsyncSession = Depends(get_db),
+):
+    return await get_chains(session, page=page, per_page=per_page)
+
+
+@router.get("/chains/{chain_id}")
+async def chain_detail(chain_id: int, session: AsyncSession = Depends(get_db)):
+    result = await get_chain_detail(session, chain_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    return result
 
 
 @router.get("/emails/{email_id}")

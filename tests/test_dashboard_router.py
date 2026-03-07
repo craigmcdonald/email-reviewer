@@ -93,6 +93,46 @@ class TestRepDetailPage:
         assert resp.status_code == 200
 
 
+class TestChainsPage:
+    async def test_get_chains_returns_200(self, client):
+        resp = await client.get("/chains")
+        assert resp.status_code == 200
+
+    async def test_get_chains_contains_chains_heading(self, client):
+        resp = await client.get("/chains")
+        assert "Chains" in resp.text
+
+    async def test_get_chain_detail_returns_200(
+        self, client, make_chain, make_email
+    ):
+        chain = await make_chain(normalized_subject="Test chain")
+        await make_email(
+            from_email="rep@example.com",
+            subject="Test chain",
+            chain_id=chain.id,
+            position_in_chain=1,
+        )
+        resp = await client.get(f"/chains/{chain.id}")
+        assert resp.status_code == 200
+
+    async def test_rep_detail_contains_chains_section(
+        self, client, make_rep, make_chain, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        chain = await make_chain(normalized_subject="Sales pitch")
+        await make_email(
+            from_email="alice@example.com",
+            subject="Sales pitch",
+            chain_id=chain.id,
+            position_in_chain=1,
+        )
+        e = await make_email(from_email="alice@example.com", subject="Other")
+        await make_score(email_id=e.id, overall=7)
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Chains" in resp.text
+
+
 class TestRepExport:
     async def test_export_filtered_returns_xlsx(
         self, client, make_rep, make_email, make_score

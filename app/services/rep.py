@@ -5,7 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.models import Email, Rep, Score
+from app.models import ChainScore, Email, EmailChain, Rep, Score
 
 
 def _paginate_result(items, total: int, page: int, per_page: int | None):
@@ -26,6 +26,30 @@ async def get_team(
     session: AsyncSession, *, page: int = 1, per_page: int | None = 20
 ):
     """JOIN emails/scores/reps, GROUP BY rep, compute AVGs, sort by overall desc."""
+    # Subquery for chain stats per rep
+    chain_subq = (
+        select(
+            Email.from_email.label("rep_email"),
+            func.count(func.distinct(Email.chain_id)).label("chain_count"),
+        )
+        .where(Email.chain_id.isnot(None))
+        .group_by(Email.from_email)
+        .subquery()
+    )
+
+    # Subquery for avg chain score per rep
+    chain_score_subq = (
+        select(
+            Email.from_email.label("rep_email"),
+            func.avg(ChainScore.conversation_quality).label("avg_chain_score"),
+        )
+        .join(EmailChain, EmailChain.id == Email.chain_id)
+        .join(ChainScore, ChainScore.chain_id == EmailChain.id)
+        .where(Email.chain_id.isnot(None))
+        .group_by(Email.from_email)
+        .subquery()
+    )
+
     base = (
         select(
             Rep.email,
@@ -35,10 +59,17 @@ async def get_team(
             func.avg(Score.value_proposition).label("avg_value_proposition"),
             func.avg(Score.cta).label("avg_cta"),
             func.avg(Score.overall).label("avg_overall"),
+            chain_subq.c.chain_count,
+            chain_score_subq.c.avg_chain_score,
         )
         .join(Email, Email.from_email == Rep.email)
         .join(Score, Score.email_id == Email.id)
-        .group_by(Rep.email, Rep.display_name)
+        .outerjoin(chain_subq, chain_subq.c.rep_email == Rep.email)
+        .outerjoin(chain_score_subq, chain_score_subq.c.rep_email == Rep.email)
+        .group_by(
+            Rep.email, Rep.display_name,
+            chain_subq.c.chain_count, chain_score_subq.c.avg_chain_score,
+        )
         .order_by(func.avg(Score.overall).desc())
     )
 

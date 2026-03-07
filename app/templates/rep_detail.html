@@ -113,6 +113,33 @@
     </table>
 </div>
 {% include "_pagination.html" %}
+
+{% if chains %}
+<h2 class="text-xl font-bold mt-8 mb-4">Chains</h2>
+<div class="bg-white rounded-lg shadow overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Emails</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quality</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+            {% for chain in chains %}
+            <tr>
+                <td class="px-6 py-4">
+                    <a href="/chains/{{ chain.id }}" class="text-blue-600 hover:underline">{{ chain.normalized_subject or "(no subject)" }}</a>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm">{{ chain.email_count or 0 }}</td>
+                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(chain.conversation_quality) }}">{{ chain.conversation_quality if chain.conversation_quality is not none else "—" }}</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <script>
 document.getElementById('filter-form').addEventListener('submit', function(e) {
     var inputs = this.querySelectorAll('input, select');
