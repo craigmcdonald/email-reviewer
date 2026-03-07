@@ -216,6 +216,7 @@ email-reviewer/
 │   │   ├── settings.py       # SettingsResponse, SettingsUpdate
 │   │   └── job.py            # JobResponse, JobSummaryResponse, LastRunResponse
 │   ├── services/             # Business logic
+│   │   ├── chain.py          # Chain queries (list, detail, rep chains)
 │   │   ├── chain_builder.py   # Email conversation chain grouping
 │   │   ├── export.py         # Excel export of scores and rep averages
 │   │   ├── fetcher.py        # HubSpot email fetch and upsert
@@ -230,8 +231,10 @@ email-reviewer/
 │   │       └── style.css     # Score colour utility classes
 │   ├── templates/            # Jinja2 HTML templates
 │   │   ├── base.html         # Layout with nav bar
-│   │   ├── team.html         # Rep team table
-│   │   ├── rep_detail.html   # Rep email list with expandable preview
+│   │   ├── team.html         # Rep team table with chain columns
+│   │   ├── rep_detail.html   # Rep email list with expandable preview and chains section
+│   │   ├── chains.html       # Chain list table
+│   │   ├── chain_detail.html # Chain conversation thread with score panel
 │   │   └── settings.html     # Settings form + operations panel
 │   └── templating.py         # Shared Jinja2Templates with cache-bust helper
 ├── alembic/                  # Migration configuration and scripts
@@ -263,8 +266,9 @@ email-reviewer/
 │   ├── test_chain_builder.py  # Chain builder service
 │   ├── test_chain_schema.py  # Chain score schema validation
 │   ├── test_email_schema.py  # Schema validation
-│   ├── test_api_router.py    # JSON API endpoints
-│   ├── test_dashboard_router.py # HTML dashboard views
+│   ├── test_api_router.py    # JSON API endpoints (reps, emails, stats, chains)
+│   ├── test_chain_router.py  # Chain API endpoints
+│   ├── test_dashboard_router.py # HTML dashboard views (team, rep detail, chains)
 │   ├── test_export.py        # Export service (Excel output)
 │   ├── test_fetcher.py       # Fetcher service (HubSpot API mocked)
 │   ├── test_scorer.py        # Scorer service (Claude API mocked)

@@ -26,6 +26,47 @@ class TestGetReps:
         assert row["avg_value_proposition"] is not None
         assert row["avg_cta"] is not None
 
+    async def test_returns_rep_objects_with_chain_count_field(
+        self, client, make_rep, make_email, make_score, make_chain
+    ):
+        await make_rep(email="rep@example.com", display_name="Rep One")
+        chain = await make_chain(normalized_subject="Thread")
+        email = await make_email(
+            from_email="rep@example.com", chain_id=chain.id
+        )
+        await make_score(email_id=email.id, overall=8)
+
+        resp = await client.get("/api/reps")
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["chain_count"] == 1
+
+    async def test_returns_rep_objects_with_avg_chain_score(
+        self, client, make_rep, make_email, make_score, make_chain, make_chain_score
+    ):
+        await make_rep(email="rep@example.com", display_name="Rep One")
+        chain = await make_chain(normalized_subject="Thread")
+        email = await make_email(
+            from_email="rep@example.com", chain_id=chain.id
+        )
+        await make_score(email_id=email.id, overall=8)
+        await make_chain_score(chain_id=chain.id, conversation_quality=9)
+
+        resp = await client.get("/api/reps")
+        data = resp.json()
+        assert data[0]["avg_chain_score"] == 9.0
+
+    async def test_avg_chain_score_null_when_no_chains(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="rep@example.com", display_name="Rep One")
+        email = await make_email(from_email="rep@example.com")
+        await make_score(email_id=email.id, overall=8)
+
+        resp = await client.get("/api/reps")
+        data = resp.json()
+        assert data[0]["avg_chain_score"] is None
+
     async def test_results_sorted_by_overall_avg_descending(
         self, client, make_rep, make_email, make_score
     ):
