@@ -42,13 +42,6 @@
                     <p class="mt-1 text-xs text-gray-500">Concurrency limit for Claude API calls.</p>
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <input type="checkbox" id="auto_score_after_fetch" name="auto_score_after_fetch"
-                           {% if settings.auto_score_after_fetch %}checked{% endif %}
-                           class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                    <label for="auto_score_after_fetch" class="text-sm font-medium text-gray-700">Auto-score after fetch</label>
-                </div>
-
                 <button type="submit"
                         class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                     Save Settings
@@ -428,7 +421,6 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
     data.global_start_date = document.getElementById('global_start_date').value;
     data.company_domains = document.getElementById('company_domains').value;
     data.scoring_batch_size = parseInt(document.getElementById('scoring_batch_size').value);
-    data.auto_score_after_fetch = document.getElementById('auto_score_after_fetch').checked;
     const resp = await fetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -538,6 +530,14 @@ async function loadChainStats() {
         // Stats not available
     }
 }
+
+document.getElementById('fetch_auto_score').addEventListener('change', async (e) => {
+    await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_score_after_fetch: e.target.checked }),
+    });
+});
 
 loadJobs();
 loadChainStats();
