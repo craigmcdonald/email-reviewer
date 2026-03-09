@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Integer, String
+from sqlalchemy import Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import AuditMixin, Base
@@ -22,6 +22,7 @@ class EmailChain(AuditMixin, Base):
     email_count: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     outgoing_count: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     incoming_count: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    is_unanswered: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     emails: Mapped[list["Email"]] = relationship(
         "Email",

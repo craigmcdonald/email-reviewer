@@ -12,6 +12,7 @@ class EmailChainCreate(AppBase):
     email_count: int | None = None
     outgoing_count: int | None = None
     incoming_count: int | None = None
+    is_unanswered: bool = False
 
 
 class EmailChainUpdate(AppBase):
@@ -22,6 +23,7 @@ class EmailChainUpdate(AppBase):
     email_count: int | None = None
     outgoing_count: int | None = None
     incoming_count: int | None = None
+    is_unanswered: bool | None = None
 
 
 class EmailChainResponse(EmailChainCreate):

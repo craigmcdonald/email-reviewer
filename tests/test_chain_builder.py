@@ -38,6 +38,15 @@ class TestNormalizeSubject:
     def test_handles_none(self):
         assert normalize_subject(None) == ""
 
+    def test_strips_email_arrow_prefix(self):
+        assert normalize_subject("Email: >> Hello") == "Hello"
+
+    def test_strips_email_arrow_with_extra_spaces(self):
+        assert normalize_subject("Email: >>  Hello") == "Hello"
+
+    def test_strips_nested_email_arrow_and_re(self):
+        assert normalize_subject("Re: Email: >> Hello") == "Hello"
+
 
 class TestBuildChainsMessageIdMatching:
     async def test_links_two_emails_via_in_reply_to(self, db, make_email):
@@ -260,6 +269,88 @@ class TestBuildChainsThreadIdMatching:
         assert e1.chain_id != e3.chain_id
 
 
+class TestSubjectMatchingParticipantOverlap:
+    async def test_same_subject_same_sender_different_recipients_not_chained(
+        self, db, make_email
+    ):
+        e1 = await make_email(
+            subject="Campus Fair Invite",
+            from_email="rep@native.fm",
+            to_email="prospect1@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            subject="Campus Fair Invite",
+            from_email="rep@native.fm",
+            to_email="prospect2@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        await db.refresh(e1)
+        await db.refresh(e2)
+        assert e1.chain_id is None
+        assert e2.chain_id is None
+
+    async def test_same_subject_shared_recipient_chained(
+        self, db, make_email
+    ):
+        e1 = await make_email(
+            subject="Campus Fair Invite",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            subject="Re: Campus Fair Invite",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        await db.refresh(e1)
+        await db.refresh(e2)
+        # Subject matching groups them because prospect appears in both
+        # participant sets and is not just a sender overlap
+        assert e1.chain_id is not None
+        assert e1.chain_id == e2.chain_id
+
+    async def test_reply_from_prospect_chains_correctly(
+        self, db, make_email
+    ):
+        e1 = await make_email(
+            subject="Campus Fair Invite",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            subject="Re: Campus Fair Invite",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        await db.refresh(e1)
+        await db.refresh(e2)
+        assert e1.chain_id is not None
+        assert e1.chain_id == e2.chain_id
+
+
 class TestBuildChainsSubjectFallback:
     async def test_groups_by_normalized_subject_and_participant_overlap(
         self, db, make_email
@@ -350,6 +441,144 @@ class TestBuildChainsSubjectFallback:
 
         await db.refresh(e1)
         assert e1.chain_id is None
+
+
+class TestChainCreationCriteria:
+    async def test_all_outgoing_no_chain_record(self, db, make_email):
+        e1 = await make_email(
+            subject="Campus Fair Invite",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            subject="Campus Fair Invite",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 2, 10, 0),
+        )
+        e3 = await make_email(
+            subject="Campus Fair Invite",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 3, 10, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        result = await db.execute(select(EmailChain))
+        assert result.scalars().all() == []
+        await db.refresh(e1)
+        await db.refresh(e2)
+        await db.refresh(e3)
+        assert e1.chain_id is None
+        assert e2.chain_id is None
+        assert e3.chain_id is None
+
+    async def test_prospect_reply_no_rep_followup_creates_unanswered_chain(
+        self, db, make_email
+    ):
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Hello",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        result = await db.execute(select(EmailChain))
+        chain = result.scalar_one()
+        assert chain.is_unanswered is True
+        await db.refresh(e1)
+        await db.refresh(e2)
+        assert e1.chain_id == chain.id
+        assert e2.chain_id == chain.id
+
+    async def test_back_and_forth_creates_chain(self, db, make_email):
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Hello",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        e3 = await make_email(
+            message_id="<c@x.com>",
+            in_reply_to="<b@x.com>",
+            subject="Re: Re: Hello",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 12, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        result = await db.execute(select(EmailChain))
+        chain = result.scalar_one()
+        assert chain.is_unanswered is False
+        await db.refresh(e1)
+        await db.refresh(e2)
+        await db.refresh(e3)
+        assert e1.chain_id == chain.id
+        assert e2.chain_id == chain.id
+        assert e3.chain_id == chain.id
+
+    async def test_chain_detection_checks_timestamp_order(self, db, make_email):
+        # Outgoing before incoming doesn't count as back-and-forth on its own
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Hello",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        result = await db.execute(select(EmailChain))
+        chain = result.scalar_one()
+        # Only outgoing before incoming, no outgoing after - this is unanswered
+        assert chain.is_unanswered is True
 
 
 class TestBuildChainsIdempotency:

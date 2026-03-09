@@ -61,6 +61,7 @@ Groups related emails into conversation threads.
 | email_count | Integer | | Total emails in the chain |
 | outgoing_count | Integer | | Outgoing emails in the chain |
 | incoming_count | Integer | | Incoming emails in the chain |
+| is_unanswered | Boolean | default false | True when prospect replied but rep has not followed up |
 
 ### chain_scores
 

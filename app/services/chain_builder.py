@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,7 @@ from app.enums import EmailDirection
 from app.models.chain import EmailChain
 from app.models.email import Email
 
-_PREFIX_PATTERN = re.compile(r"^(Re|RE|Fwd|FW|Fw):\s*")
+_PREFIX_PATTERN = re.compile(r"^(?:(Re|RE|Fwd|FW|Fw):\s*|Email:\s*>>\s*)")
 
 
 def normalize_subject(subject: str | None) -> str:
@@ -127,8 +127,14 @@ async def build_chains(session: AsyncSession) -> dict:
                 if find(e.id) == find(other.id):
                     continue
                 other_participants = _email_participants(other)
-                # Check participant overlap
-                if not e_participants & other_participants:
+                # Exclude each email's from_email to prevent mass-send chaining
+                # where the rep's address is the sole overlap
+                e_from = (e.from_email or "").lower()
+                other_from = (other.from_email or "").lower()
+                e_recipients = e_participants - {e_from}
+                other_recipients = other_participants - {other_from}
+                # Overlap must exist on the recipient side of at least one email
+                if not (e_recipients & other_participants or other_recipients & e_participants):
                     continue
                 # Check time proximity (30 days)
                 if e.timestamp and other.timestamp:
@@ -184,6 +190,21 @@ async def build_chains(session: AsyncSession) -> dict:
             else:
                 incoming += 1
 
+        # Follow-up sequence: all outgoing, no replies. Skip chain creation.
+        if incoming == 0:
+            continue
+
+        # Determine if this is an unanswered reply (no outgoing after last incoming)
+        last_incoming_ts = None
+        for e in reversed(group_emails):
+            if not _is_outgoing(e):
+                last_incoming_ts = e.timestamp
+                break
+        has_outgoing_after_incoming = any(
+            _is_outgoing(e) and e.timestamp and last_incoming_ts and e.timestamp > last_incoming_ts
+            for e in group_emails
+        )
+
         first_email = group_emails[0]
         chain = EmailChain(
             normalized_subject=normalize_subject(first_email.subject),
@@ -193,6 +214,7 @@ async def build_chains(session: AsyncSession) -> dict:
             email_count=len(group_emails),
             outgoing_count=outgoing,
             incoming_count=incoming,
+            is_unanswered=not has_outgoing_after_incoming,
         )
         session.add(chain)
         await session.flush()
