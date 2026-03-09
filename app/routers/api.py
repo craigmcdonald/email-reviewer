@@ -62,8 +62,22 @@ async def update_rep(
 
 
 @router.get("/reps/{rep_email}/emails")
-async def list_rep_emails(rep_email: str, session: AsyncSession = Depends(get_db)):
-    result = await get_rep_emails(session, rep_email)
+async def list_rep_emails(
+    rep_email: str,
+    type: str | None = Query(None, alias="type"),
+    session: AsyncSession = Depends(get_db),
+):
+    email_type = None
+    if type in ("outreach", "follow_up"):
+        email_type = type
+    elif type == "unanswered":
+        chains = await get_rep_chains(session, rep_email, page=1, per_page=200)
+        return [c for c in chains["items"] if c.get("is_unanswered")]
+    elif type == "chain":
+        chains = await get_rep_chains(session, rep_email, page=1, per_page=200)
+        return [c for c in chains["items"] if not c.get("is_unanswered")]
+
+    result = await get_rep_emails(session, rep_email, email_type=email_type)
     return [
         {
             "id": e.id,

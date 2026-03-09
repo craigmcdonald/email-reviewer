@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 
@@ -114,6 +116,100 @@ class TestRepDetailPage:
             },
         )
         assert resp.status_code == 200
+
+    async def test_rep_detail_shows_outreach_heading(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e = await make_email(from_email="alice@example.com", subject="Cold intro")
+        await make_score(email_id=e.id, overall=7)
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Outreach" in resp.text
+
+    async def test_rep_detail_shows_follow_up_section(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e1 = await make_email(
+            from_email="alice@example.com", to_email="p@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id, overall=7)
+        e2 = await make_email(
+            from_email="alice@example.com", to_email="p@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id, overall=6)
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Follow-up" in resp.text
+
+    async def test_rep_detail_shows_unanswered_section(
+        self, client, make_rep, make_email, make_score, make_chain
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        chain = await make_chain(
+            normalized_subject="Prospect reply",
+            is_unanswered=True,
+            incoming_count=1,
+            outgoing_count=1,
+        )
+        await make_email(
+            from_email="alice@example.com", subject="Prospect reply",
+            chain_id=chain.id, position_in_chain=1,
+        )
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Unanswered Replies" in resp.text
+
+    async def test_rep_detail_shows_chains_section(
+        self, client, make_rep, make_email, make_score, make_chain
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        chain = await make_chain(
+            normalized_subject="Sales pitch",
+            is_unanswered=False,
+            incoming_count=1,
+            outgoing_count=2,
+        )
+        await make_email(
+            from_email="alice@example.com", subject="Sales pitch",
+            chain_id=chain.id, position_in_chain=1,
+        )
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Chains" in resp.text
+
+    async def test_rep_detail_hides_follow_up_when_none(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e = await make_email(from_email="alice@example.com", subject="Unique topic")
+        await make_score(email_id=e.id, overall=7)
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Follow-up" not in resp.text
+
+    async def test_rep_detail_hides_unanswered_when_none(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e = await make_email(from_email="alice@example.com", subject="Test")
+        await make_score(email_id=e.id, overall=7)
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Unanswered Replies" not in resp.text
+
+    async def test_rep_detail_hides_chains_when_none(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e = await make_email(from_email="alice@example.com", subject="Test")
+        await make_score(email_id=e.id, overall=7)
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Chains" not in resp.text
 
 
 class TestChainDetailPage:

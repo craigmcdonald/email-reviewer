@@ -117,6 +117,7 @@ async def get_rep_chains(
             "email_count": chain.email_count,
             "outgoing_count": chain.outgoing_count,
             "incoming_count": chain.incoming_count,
+            "is_unanswered": chain.is_unanswered,
             "progression": cs.progression if cs else None,
             "responsiveness": cs.responsiveness if cs else None,
             "persistence": cs.persistence if cs else None,

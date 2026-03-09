@@ -42,7 +42,13 @@ Update a rep's fields. Currently supports setting `rep_type`.
 
 Scored emails for one rep, ordered by date descending.
 
-**Response**: Paginated `{items, total, page, per_page, pages}`
+**Query parameters**:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| type | string | (none) | Filter by email type. Accepted values: `outreach` (standalone or first-in-sequence emails), `follow_up` (subsequent sends to same recipient/subject with no reply), `unanswered` (chains where prospect replied but rep has not followed up), `chain` (back-and-forth conversation chains). When `unanswered` or `chain`, returns chain objects instead of email objects. |
+
+**Response**: List of email objects (default, `outreach`, `follow_up`) or chain objects (`unanswered`, `chain`).
 
 ### GET /api/reps/{rep_email}/chains
 
