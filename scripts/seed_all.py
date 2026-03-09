@@ -15,16 +15,30 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.models import Email, Rep, Score  # noqa: F401 - registers tables
+from app.models import Email, Rep, Score, Settings  # noqa: F401 - registers tables
 from scripts.seeds.emails import EMAILS
 from scripts.seeds.reps import REPS
 from scripts.seeds.scores import SCORES
+from scripts.seeds.settings import SETTINGS_SEED
 
 
 def _build_engine():
     url = settings.DATABASE_URL
     url = re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", url)
     return create_async_engine(url)
+
+
+async def _seed_settings(session: AsyncSession):
+    existing = await session.get(Settings, 1)
+    if existing:
+        for key, value in SETTINGS_SEED.items():
+            setattr(existing, key, value)
+        action = "updated"
+    else:
+        session.add(Settings(id=1, **SETTINGS_SEED))
+        action = "inserted"
+    await session.flush()
+    print(f"  settings: {action}")
 
 
 async def _seed_reps(session: AsyncSession):
@@ -87,6 +101,7 @@ async def _run():
     async with async_session() as session:
         async with session.begin():
             print("Seeding database...")
+            await _seed_settings(session)
             await _seed_reps(session)
             await _seed_emails(session)
             await _seed_scores(session)

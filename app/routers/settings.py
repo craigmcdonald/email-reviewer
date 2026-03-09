@@ -3,11 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings as app_config
 from app.database import get_db
-from app.models.settings import (
-    DEFAULT_CHAIN_EMAIL_BLOCKS,
-    DEFAULT_CHAIN_EVAL_BLOCKS,
-    DEFAULT_INITIAL_EMAIL_BLOCKS,
-)
+from scripts.seeds.settings import SETTINGS_SEED
 from app.schemas.settings import SettingsResponse, SettingsUpdate
 from app.services.settings import get_settings, update_settings
 from app.templating import templates
@@ -30,9 +26,9 @@ async def patch_settings(
 @router.get("/api/settings/defaults")
 async def settings_defaults():
     return {
-        "initial_email_prompt_blocks": DEFAULT_INITIAL_EMAIL_BLOCKS,
-        "chain_email_prompt_blocks": DEFAULT_CHAIN_EMAIL_BLOCKS,
-        "chain_evaluation_prompt_blocks": DEFAULT_CHAIN_EVAL_BLOCKS,
+        "initial_email_prompt_blocks": SETTINGS_SEED["initial_email_prompt_blocks"],
+        "chain_email_prompt_blocks": SETTINGS_SEED["chain_email_prompt_blocks"],
+        "chain_evaluation_prompt_blocks": SETTINGS_SEED["chain_evaluation_prompt_blocks"],
     }
 
 

@@ -49,7 +49,7 @@ pipenv run python -m scripts.db_reset          # prompts for confirmation
 pipenv run python -m scripts.db_reset --yes    # skip confirmation
 ```
 
-**Seed** populates the database with sample reps, emails, and scores. Idempotent - skips records that already exist:
+**Seed** populates the database with settings (prompt blocks and scoring weights), reps, emails, and scores. Idempotent - updates settings to canonical values and skips records that already exist:
 
 ```bash
 pipenv run python -m scripts.seed_all
@@ -65,6 +65,7 @@ Seed data files live in `scripts/seeds/`:
 
 | File | Contents |
 |------|----------|
+| `settings.py` | Evaluation prompt blocks and scoring weights for the settings row |
 | `reps.py` | Sales rep email addresses and display names |
 | `emails.py` | Sample outgoing sales emails (derived from HubSpot fixtures) |
 | `scores.py` | Sample Claude API scoring results for the seed emails |
@@ -284,6 +285,7 @@ email-reviewer/
 │   ├── db_reset.py           # Drop all tables and re-apply migrations
 │   ├── seed_all.py           # Populate database with seed data
 │   └── seeds/                # Seed data definitions
+│       ├── settings.py       # Prompt blocks and scoring weights
 │       ├── reps.py           # Rep seed data
 │       ├── emails.py         # Email seed data
 │       └── scores.py         # Score seed data

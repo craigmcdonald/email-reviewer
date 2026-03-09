@@ -25,11 +25,7 @@ os.environ["DATABASE_URL"] = DB_URL
 
 from app.models import Email, Job, Rep, Score, Settings  # noqa: F401
 from app.models.base import Base
-from app.models.settings import (
-    DEFAULT_CHAIN_EMAIL_BLOCKS,
-    DEFAULT_CHAIN_EVAL_BLOCKS,
-    DEFAULT_INITIAL_EMAIL_BLOCKS,
-)
+from scripts.seeds.settings import SETTINGS_SEED
 
 # Seed database
 sync_engine = create_engine(DB_URL)
@@ -43,9 +39,9 @@ with Session(sync_engine) as session:
         company_domains="nativecampusadvertising.com,native.fm",
         scoring_batch_size=5,
         auto_score_after_fetch=True,
-        initial_email_prompt_blocks=DEFAULT_INITIAL_EMAIL_BLOCKS.copy(),
-        chain_email_prompt_blocks=DEFAULT_CHAIN_EMAIL_BLOCKS.copy(),
-        chain_evaluation_prompt_blocks=DEFAULT_CHAIN_EVAL_BLOCKS.copy(),
+        initial_email_prompt_blocks=SETTINGS_SEED["initial_email_prompt_blocks"].copy(),
+        chain_email_prompt_blocks=SETTINGS_SEED["chain_email_prompt_blocks"].copy(),
+        chain_evaluation_prompt_blocks=SETTINGS_SEED["chain_evaluation_prompt_blocks"].copy(),
     ))
     session.commit()
 

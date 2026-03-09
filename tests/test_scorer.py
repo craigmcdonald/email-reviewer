@@ -10,10 +10,10 @@ from app.models.chain_score import ChainScore
 from app.models.email import Email
 from app.models.score import Score
 from app.models.settings import (
-    DEFAULT_INITIAL_EMAIL_BLOCKS,
     EMAIL_DIMENSIONS,
     assemble_prompt,
 )
+from scripts.seeds.settings import SETTINGS_SEED
 from app.services.scorer import (
     _build_chain_context,
     _build_user_message,
@@ -142,8 +142,8 @@ class TestAssemblePrompt:
         assert "4. **clarity** — Easy to read?" in result
         assert result.endswith("Return JSON.")
 
-    def test_default_blocks_produce_valid_prompt(self):
-        result = assemble_prompt(DEFAULT_INITIAL_EMAIL_BLOCKS, EMAIL_DIMENSIONS)
+    def test_seed_blocks_produce_valid_prompt(self):
+        result = assemble_prompt(SETTINGS_SEED["initial_email_prompt_blocks"], EMAIL_DIMENSIONS)
         assert "sales email evaluator" in result
         assert "value_proposition" in result
         assert "personalisation" in result

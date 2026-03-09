@@ -17,9 +17,6 @@ from app.models.email import Email
 from app.models.score import Score
 from app.models.settings import (
     CHAIN_DIMENSIONS,
-    DEFAULT_CHAIN_EMAIL_BLOCKS,
-    DEFAULT_CHAIN_EVAL_BLOCKS,
-    DEFAULT_INITIAL_EMAIL_BLOCKS,
     EMAIL_DIMENSIONS,
     Settings,
     assemble_prompt,
@@ -187,11 +184,13 @@ async def _score_single_email(
 
     user_message = _build_user_message(email)
 
-    # Choose prompt based on chain position, falling back to defaults
+    # Choose prompt based on chain position
     if email.chain_id is not None and (email.position_in_chain or 0) > 1:
-        blocks = settings.chain_email_prompt_blocks or DEFAULT_CHAIN_EMAIL_BLOCKS
+        blocks = settings.chain_email_prompt_blocks
     else:
-        blocks = settings.initial_email_prompt_blocks or DEFAULT_INITIAL_EMAIL_BLOCKS
+        blocks = settings.initial_email_prompt_blocks
+    if not blocks:
+        raise ValueError("Prompt blocks not configured in settings")
     system_prompt = assemble_prompt(blocks, EMAIL_DIMENSIONS)
 
     async with semaphore:
@@ -256,6 +255,10 @@ async def score_unscored_emails(
         client = AsyncAnthropic()
         semaphore = asyncio.Semaphore(batch_size)
         settings = await get_settings(session)
+
+        if not settings.initial_email_prompt_blocks:
+            summary["error_message"] = "Prompt blocks not configured in settings"
+            return summary
 
         weights = {
             "weight_value_proposition": settings.weight_value_proposition,
@@ -364,6 +367,11 @@ async def score_unscored_chains(
         return summary
 
     settings = await get_settings(session)
+
+    if not settings.chain_evaluation_prompt_blocks:
+        summary["error_message"] = "Chain evaluation prompt blocks not configured in settings"
+        return summary
+
     client = AsyncAnthropic()
 
     for chain in unscored_chains:
@@ -410,7 +418,7 @@ async def score_unscored_chains(
                 response = await client.messages.create(
                     model="claude-sonnet-4-20250514",
                     max_tokens=300,
-                    system=[{"type": "text", "text": assemble_prompt(settings.chain_evaluation_prompt_blocks or DEFAULT_CHAIN_EVAL_BLOCKS, CHAIN_DIMENSIONS)}],
+                    system=[{"type": "text", "text": assemble_prompt(settings.chain_evaluation_prompt_blocks, CHAIN_DIMENSIONS)}],
                     messages=[{"role": "user", "content": conversation_text}],
                 )
                 total_tokens["input"] += response.usage.input_tokens
