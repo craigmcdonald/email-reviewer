@@ -110,7 +110,8 @@ Current application settings.
 | scoring_batch_size | integer | Claude API concurrency limit |
 | auto_score_after_fetch | boolean | Auto-score after fetch |
 | initial_email_prompt_blocks | object \| null | Structured prompt blocks for scoring initial cold outreach emails. Keys: `opening`, `value_proposition`, `personalisation`, `cta`, `clarity`, `closing` |
-| chain_email_prompt_blocks | object \| null | Structured prompt blocks for scoring follow-up emails. Same keys as initial |
+| follow_up_email_prompt_blocks | object \| null | Structured prompt blocks for scoring follow-up emails. Same keys as initial |
+| classifier_prompt_blocks | object \| null | Structured prompt blocks for the Haiku email classifier. Keys: `opening`, `classification`, `quoted_extraction`, `closing` |
 | chain_evaluation_prompt_blocks | object \| null | Structured prompt blocks for evaluating conversation chains. Keys: `opening`, `progression`, `responsiveness`, `persistence`, `conversation_quality`, `closing` |
 | weight_value_proposition | float | Weight for value_proposition (default 0.35) |
 | weight_personalisation | float | Weight for personalisation (default 0.30) |
@@ -132,7 +133,7 @@ Partial update of application settings. Returns the updated settings.
 
 ### GET /api/settings/defaults
 
-Default prompt block objects for `initial_email_prompt_blocks`, `chain_email_prompt_blocks`, and `chain_evaluation_prompt_blocks`.
+Default prompt block objects for `initial_email_prompt_blocks`, `follow_up_email_prompt_blocks`, and `chain_evaluation_prompt_blocks`.
 
 **Response**: Object with default prompt strings.
 
@@ -174,6 +175,12 @@ Start an Excel export operation.
 ### POST /api/operations/chain-build
 
 Rebuild conversation chains from email threading data. Returns 202 with job record. Rejects 409 if a CHAIN_BUILD job is already RUNNING.
+
+**Response**: `JobResponse` (202)
+
+### POST /api/operations/classify
+
+Classify incoming emails as auto-replies or real emails. Returns 202 with job record. Rejects 409 if a CLASSIFY job is already RUNNING.
 
 **Response**: `JobResponse` (202)
 

@@ -22,7 +22,7 @@ Dependencies flow strictly left to right.
 
 | Layer | Location | Role |
 |-------|----------|------|
-| Enums | `app/enums.py` | `(str, Enum)` definitions shared by models and schemas. Serialise as plain strings in the database and JSON. Includes `EmailDirection`, `JobType` (FETCH, SCORE, RESCORE, EXPORT, Chain_Build), `JobStatus`, `RepType` (SDR, BizDev, AM, Non-Sales). |
+| Enums | `app/enums.py` | `(str, Enum)` definitions shared by models and schemas. Serialise as plain strings in the database and JSON. Includes `EmailDirection`, `JobType` (FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD, CLASSIFY), `JobStatus`, `RepType` (SDR, BizDev, AM, Non-Sales). |
 | Models | `app/models/` | SQLAlchemy ORM layer. One file per domain entity. All inherit `AuditMixin` and `Base`. |
 | Schemas | `app/schemas/` | Pydantic validation. Three schemas per entity: `Create`, `Update`, `Response`. One file per domain. |
 | Services | `app/services/` | Business logic. Pure functions where possible. Separated from routers. |
@@ -59,6 +59,8 @@ Seven tables:
 | message_id | String | Nullable. RFC 2822 Message-ID header |
 | in_reply_to | String | Nullable. RFC 2822 In-Reply-To header |
 | thread_id | String | Nullable. HubSpot thread identifier |
+| is_auto_reply | Boolean | Default false. True for auto-replies (OOO, calendar, bounces). Set by the classifier. |
+| quoted_metadata | JSONB | Nullable. Extracted metadata about quoted emails. Array of `{from_email, subject}`. NULL means unclassified. |
 
 **scores** - Claude API scoring results. One-to-one with emails (cascade delete).
 
@@ -92,9 +94,10 @@ Seven tables:
 | company_domains | String | Comma-separated domains for outgoing email filtering |
 | scoring_batch_size | Integer | Concurrency limit for Claude API calls. Default 5 |
 | auto_score_after_fetch | Boolean | When true, fetch also scores unscored emails. Default true |
-| initial_email_prompt | Text | Configurable prompt for individual email scoring. Defaults to four-dimension scoring prompt (personalisation, clarity, value_proposition, cta) |
-| chain_email_prompt | Text | Prompt for scoring emails within a conversation chain context |
-| chain_evaluation_prompt | Text | Prompt for evaluating conversation chains (progression, responsiveness, persistence, conversation_quality) |
+| initial_email_prompt_blocks | JSONB | Structured prompt blocks for scoring initial cold outreach emails. Keys: `opening`, `value_proposition`, `personalisation`, `cta`, `clarity`, `closing` |
+| follow_up_email_prompt_blocks | JSONB | Structured prompt blocks for scoring follow-up emails. Same keys as initial_email_prompt_blocks |
+| classifier_prompt_blocks | JSONB | Structured prompt blocks for the Haiku email classifier. Keys: `opening`, `classification`, `quoted_extraction`, `closing` |
+| chain_evaluation_prompt_blocks | JSONB | Structured prompt blocks for evaluating conversation chains. Keys: `opening`, `progression`, `responsiveness`, `persistence`, `conversation_quality`, `closing` |
 | weight_value_proposition | Float | Weight for value_proposition in overall score calculation. Default 0.35 |
 | weight_personalisation | Float | Weight for personalisation in overall score calculation. Default 0.30 |
 | weight_cta | Float | Weight for cta in overall score calculation. Default 0.20 |
@@ -105,7 +108,7 @@ Seven tables:
 | Column | Type | Notes |
 |--------|------|-------|
 | job_id | Integer (PK) | Auto-increment |
-| job_type | String | FETCH, SCORE, RESCORE, EXPORT, or Chain_Build |
+| job_type | String | FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD, or CLASSIFY |
 | status | String | PENDING, RUNNING, COMPLETED, or FAILED |
 | started_at | DateTime | Set when status becomes RUNNING |
 | completed_at | DateTime | Set when status becomes COMPLETED or FAILED |
@@ -199,14 +202,15 @@ The entry point is `score_unscored_emails(session, batch_size=5)`, which:
 2. Skips emails from reps with no `rep_type` set - the `skipped_untyped` count in the summary tracks how many were skipped for this reason.
 3. Skips emails from Non-Sales reps - the `skipped_non_sales` count in the summary tracks how many were skipped for this reason.
 4. Skips emails with empty or very short bodies (under 20 words) - no score row is created since there is no content to evaluate.
-5. Loads the scoring prompt from settings: `initial_email_prompt` for standalone emails or first-in-chain, `chain_email_prompt` for follow-up emails (position_in_chain > 1).
+5. Loads the scoring prompt from settings: `initial_email_prompt_blocks` for outreach emails, `follow_up_email_prompt_blocks` for follow-up emails (same sender, same recipient, same normalized subject, no chain_id). Follow-up detection uses `_is_follow_up()` which checks for prior outgoing emails to the same recipient with the same normalized subject. For follow-up emails, prior emails in the sequence are included as context.
 6. For follow-up emails, pre-builds chain context via `_build_chain_context()` - prior emails in the chain, each truncated to 2000 characters, included as a "Previous conversation" section in the user message.
 7. Sends remaining emails to Claude concurrently, capped by an asyncio semaphore (`batch_size`). The user message includes the rep's type (e.g. "Rep role: SDR") so Claude can evaluate role-appropriately.
 8. Retries on rate limit (429) errors using the `retry-after` header from the API response, up to 5 attempts. Falls back to 60 seconds when the header is missing.
 9. Retries once on JSON parse failure. After two consecutive failures, writes a score row with `score_error=True`.
 10. Parses 4 dimensions from Claude (personalisation, clarity, value_proposition, cta) via the `ScoringResult` Pydantic model. Calculates `overall` as a weighted average using weights from settings via `_calculate_weighted_overall()`. Stores all 5 values in the scores table.
 11. Calls `score_unscored_chains()` after individual scoring.
-12. Returns a summary dict with counts (`total_unscored`, `scored`, `skipped`, `skipped_untyped`, `skipped_non_sales`, `errors`, `chains_scored`, `chain_errors`, `chains_skipped_untyped`, `chains_skipped_non_sales`, `chains_skipped_unanswered`) and token usage.
+12. Skips emails where `is_auto_reply` is true — auto-replies are not scored.
+13. Returns a summary dict with counts (`total_unscored`, `scored`, `skipped`, `skipped_untyped`, `skipped_non_sales`, `errors`, `chains_scored`, `chain_errors`, `chains_skipped_untyped`, `chains_skipped_non_sales`) and token usage.
 
 `_calculate_weighted_overall(scores, weights)` is a pure function that computes the weighted sum of the 4 dimensions, rounds to the nearest integer, and clamps the result to 1-10.
 
@@ -220,15 +224,28 @@ The entry point is `score_unscored_emails(session, batch_size=5)`, which:
 
 `score_unscored_chains(session, batch_size=5)` scores conversation chains that have no chain_score record and have email_count >= 2:
 
-1. Skips chains where `is_unanswered` is true - unanswered replies get no ChainScore.
-2. Skips chains where the rep (identified from outgoing emails) has no `rep_type` set.
-3. Skips chains where the rep is Non-Sales.
+1. Skips chains where the rep (identified from outgoing emails) has no `rep_type` set.
+2. Skips chains where the rep is Non-Sales.
 4. Builds full conversation context from all chain emails, prefixed with the rep's role (e.g. "Rep role: BizDev").
-5. Sends to Claude with `settings.chain_evaluation_prompt`.
+5. Sends to Claude with `settings.chain_evaluation_prompt_blocks`.
 6. Parses 4 chain dimensions (progression, responsiveness, persistence, conversation_quality) via `ChainScoringResult`.
 7. Computes `avg_response_hours` from timestamps of consecutive outgoing emails.
 8. Retries once on parse failure. After two failures, writes a chain_score with `score_error=True`.
-9. Returns a summary dict with `chains_scored`, `errors`, `skipped_untyped`, `skipped_non_sales`, `skipped_unanswered`, and token usage.
+9. Returns a summary dict with `chains_scored`, `errors`, `skipped_untyped`, `skipped_non_sales`, and token usage.
+
+## Classifier
+
+`app/services/classifier.py` classifies incoming emails as auto-replies or real emails using a two-pass approach:
+
+1. **Pattern matching**: Checks email subjects against known auto-reply patterns (Automatic reply, Out of Office, OOO, Accepted, Declined, Tentative, Undeliverable, Mail Delivery Failed). Emails matching these patterns are immediately marked as `is_auto_reply=True`.
+
+2. **Haiku classification**: Remaining unclassified incoming emails are sent to Claude Haiku (`claude-haiku-4-5-20251001`) for classification. The API returns `email_type` (auto_reply or real_email) and `quoted_emails` (metadata about quoted content in the email body). Results are stored in the `is_auto_reply` and `quoted_metadata` columns.
+
+The classifier processes emails where `direction=INCOMING_EMAIL`, `is_auto_reply=False`, and `quoted_metadata IS NULL` (the NULL marker indicates unclassified). After classification, `quoted_metadata` is set to an array (possibly empty) to mark the email as processed.
+
+The entry point is `classify_emails(session, batch_size=10)`, which returns a summary dict with `total`, `classified`, `auto_replies_found`, `chains_extracted`, and `errors`.
+
+Auto-reply emails are excluded from scoring and chain building. The chain builder ignores emails with `is_auto_reply=True` when counting incoming emails, determining unanswered status, and computing `last_activity_at`.
 
 ## Chain Builder
 
@@ -261,6 +278,8 @@ Both sheets use Arial font, frozen header rows, and auto-filters. Returns the ou
 
 A second entry point, `export_rep_emails(session, rep_email, *, search, date_from, date_to, score_min, score_max, export_all)`, generates an in-memory Excel workbook (BytesIO) for a single rep's emails. Accepts the same filter parameters as `get_rep_emails()`. When `export_all=True`, all filter params are ignored and every scored email for the rep is included. The workbook contains a single "Email Scores" sheet with the same colour-coded formatting as the full export.
 
+A third entry point, `export_rep_chains(session, rep_email, *, search, date_from, date_to, score_min, score_max, export_all, status)`, generates an in-memory Excel workbook for a single rep's conversation chains. Accepts the same filter parameters as `get_rep_chains()` plus an optional `status` filter (unanswered/answered). The workbook contains a "Conversations" sheet with chain-level data: subject, email count, last activity, four chain score dimensions, and notes.
+
 ## Dashboard and API
 
 The web UI is served by four routers registered in `app/main.py`.
@@ -272,8 +291,8 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 | Route | View |
 |-------|------|
 | `GET /` | Team page - rep table with colour-coded average scores. Type column shows the assigned type with an edit icon that reveals a dropdown on click; unassigned reps show a dropdown directly. Filter dropdown above the table filters by rep type (SDR, BizDev, AM, Non-Sales, Unassigned). Accepts `?page=1&per_page=20&rep_type=` query params for pagination and filtering. `per_page=0` returns all results. |
-| `GET /reps/{rep_email}` | Rep detail page with four sections: Outreach (paginated, filterable standalone/first-in-sequence emails), Follow-up (read-only table of subsequent sends to same recipient/subject, shown only if any exist), Unanswered Replies (chains where prospect replied but rep has not followed up, shown only if any exist), Chains (back-and-forth conversations with chain scores, shown only if any exist). Outreach section accepts `?page=1&per_page=20`, `?search=`, `?date_from=`, `?date_to=`, `?score_min=`, `?score_max=` query params. |
-| `GET /reps/{rep_email}/export` | Downloads an Excel (.xlsx) file of the rep's scored emails. Accepts the same filter query params as the detail page plus `?export_all=true` to ignore filters and include all emails. |
+| `GET /reps/{rep_email}` | Rep detail page with three sections: Outreach (standalone/first-in-sequence outgoing emails), Follow-ups (subsequent sends to same recipient/subject with no reply), Conversations (back-and-forth chains with chain scores). All three sections are always shown and have identical filter/search/pagination structure. Each section uses prefixed query params: `o_` (outreach), `f_` (follow-ups), `c_` (conversations). Conversations section has an additional `c_status` filter (unanswered/answered). Params: `{prefix}_page`, `{prefix}_per_page`, `{prefix}_search`, `{prefix}_date_from`, `{prefix}_date_to`, `{prefix}_score_min`, `{prefix}_score_max`. |
+| `GET /reps/{rep_email}/export` | Downloads an Excel (.xlsx) file. Accepts `?section=` (outreach, follow_ups, conversations) to select which section to export, plus filter query params and `?export_all=true`. |
 | `GET /chains/{chain_id}` | Chain detail page — full conversation thread in chronological order. Each email shows direction, sender, recipient, timestamp, subject, body preview, and individual score. Chain score panel at top with all 4 dimensions and avg_response_hours. Accessed from the rep detail page's Chains section. |
 
 ### Settings Page (`app/routers/settings.py`)
@@ -300,7 +319,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 |-------|----------|
 | `GET /api/settings` | Current `SettingsResponse` |
 | `PATCH /api/settings` | Partial update, returns updated `SettingsResponse` |
-| `GET /api/settings/defaults` | Default prompt texts for `initial_email_prompt`, `chain_email_prompt`, `chain_evaluation_prompt`. Powers "Reset to Default" buttons. |
+| `GET /api/settings/defaults` | Default prompt block objects for `initial_email_prompt_blocks`, `follow_up_email_prompt_blocks`, `chain_evaluation_prompt_blocks`. |
 
 ### Operations API (`app/routers/operations.py`)
 
@@ -311,6 +330,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 | `POST /api/operations/rescore` | 202 with job record. Rejects 409 if SCORE or RESCORE is RUNNING. |
 | `POST /api/operations/export` | 202 with job record. |
 | `POST /api/operations/chain-build` | 202 with job record. Rejects 409 if a CHAIN_BUILD job is RUNNING. |
+| `POST /api/operations/classify` | 202 with job record. Rejects 409 if a CLASSIFY job is RUNNING. Classifies incoming emails as auto-replies or real emails. |
 | `GET /api/operations/jobs` | List of `JobResponse` ordered by created_at desc |
 | `GET /api/operations/jobs/{job_id}` | Single `JobResponse` |
 | `GET /api/operations/last-run` | Most recent completed job per type (or null) |
@@ -351,9 +371,10 @@ Settings control the behaviour of fetch and score operations:
 - `company_domains` — comma-separated list passed to `filter_relevant_emails`.
 - `scoring_batch_size` — concurrency limit for the Claude API semaphore.
 - `auto_score_after_fetch` — when true, a fetch operation automatically scores unscored emails on completion.
-- `initial_email_prompt` — configurable system prompt for individual email scoring. Defaults to four-dimension scoring (personalisation, clarity, value_proposition, cta).
-- `chain_email_prompt` — system prompt for scoring emails within conversation chain context.
-- `chain_evaluation_prompt` — system prompt for evaluating conversation chains on chain-specific dimensions (progression, responsiveness, persistence, conversation_quality).
+- `initial_email_prompt_blocks` — structured prompt blocks for scoring initial cold outreach emails.
+- `follow_up_email_prompt_blocks` — structured prompt blocks for scoring follow-up emails (same sender, recipient, normalized subject, no chain_id).
+- `classifier_prompt_blocks` — structured prompt blocks for the Haiku email classifier.
+- `chain_evaluation_prompt_blocks` — structured prompt blocks for evaluating conversation chains on chain-specific dimensions (progression, responsiveness, persistence, conversation_quality).
 - `weight_value_proposition`, `weight_personalisation`, `weight_cta`, `weight_clarity` — weights for computing an overall score from the four individual dimensions. Must sum to 1.0. Defaults: 0.35, 0.30, 0.20, 0.15.
 
 Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` cannot be in the future, `company_domains` cannot be empty, `scoring_batch_size` must be >= 1. When any weight field is provided, all four must be present and sum to 1.0 (tolerance 0.001). Prompt fields cannot be empty strings.
@@ -369,6 +390,7 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 - `run_rescore_job(session, job_id)` — deletes all existing chain_scores and scores, then calls `score_unscored_emails` to score every email and chain. Result summary includes `scored`, `errors`, `tokens`, `chains_scored`, `chain_errors`.
 - `run_export_job(session, job_id, output_path)` — generates Excel via `export_to_excel`, stores path in result summary.
 - `run_chain_build_job(session, job_id)` — calls `build_chains`, stores result summary with `chains_created`, `chains_updated`, and `emails_linked` counts.
+- `run_classify_job(session, job_id)` — calls `classify_emails`, stores result summary with `total`, `classified`, `auto_replies_found`, `chains_extracted`, and `errors` counts.
 
 No FULL_RUN job type. A FETCH job can handle both fetch and score phases. The `auto_score` request parameter controls scoring per-fetch; when omitted, the `auto_score_after_fetch` setting applies. Cron POSTs to `/api/operations/fetch` and the setting controls the default behaviour. The UI exposes a "Score after fetch" checkbox initialised from the setting, allowing per-fetch override.
 

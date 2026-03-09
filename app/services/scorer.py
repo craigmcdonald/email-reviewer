@@ -68,10 +68,15 @@ def _build_user_message(email: Email, rep_type: str | None = None) -> str:
     if rep_type:
         parts.append(f"Rep role: {rep_type}")
 
-    # Include chain context for follow-up emails
+    # Include chain context for chain follow-up emails
     chain_context = getattr(email, "_chain_context", None)
     if chain_context and (email.position_in_chain or 0) > 1:
         parts.append(f"Previous conversation:\n{chain_context}\n")
+
+    # Include follow-up context for unchained follow-up emails
+    follow_up_context = getattr(email, "_follow_up_context", None)
+    if follow_up_context:
+        parts.append(f"Previous emails in sequence:\n{follow_up_context}\n")
 
     parts.append(
         f"From: {from_str}\n"
@@ -122,6 +127,68 @@ async def _build_chain_context(session: AsyncSession, email: Email) -> str:
             f"To: {to_str}\n"
             f"Date: {date_str}\n"
             f"Subject: {prior.subject or ''}\n"
+            f"Body: {body}"
+        )
+
+    return "\n---\n".join(sections)
+
+
+async def _build_follow_up_context(session: AsyncSession, email: Email) -> str:
+    """Build context from prior emails in the same follow-up sequence.
+
+    A follow-up sequence is emails from the same from_email to the same to_email
+    with the same normalized subject, no chain_id, ordered by timestamp.
+    Returns empty string if this is the first email or no prior emails exist.
+    """
+    from app.services.chain_builder import normalize_subject
+
+    if email.chain_id is not None:
+        return ""
+
+    norm_subj = normalize_subject(email.subject)
+    if not norm_subj:
+        return ""
+
+    # Find all emails from same sender to same recipient with same normalized subject
+    stmt = (
+        select(Email)
+        .where(Email.from_email == email.from_email)
+        .where(Email.to_email == email.to_email)
+        .where(Email.chain_id.is_(None))
+        .order_by(Email.timestamp.asc())
+    )
+    result = await session.execute(stmt)
+    candidates = result.scalars().all()
+
+    # Filter to same normalized subject and before current email
+    prior = []
+    for c in candidates:
+        if normalize_subject(c.subject) != norm_subj:
+            continue
+        if c.id == email.id:
+            break
+        prior.append(c)
+
+    if not prior:
+        return ""
+
+    sections = []
+    for p in prior:
+        body = p.body_text or ""
+        if len(body) > MAX_CHAIN_EMAIL_LENGTH:
+            body = body[:MAX_CHAIN_EMAIL_LENGTH]
+
+        from_parts = [p.from_name, p.from_email]
+        from_str = " ".join(p_part for p_part in from_parts if p_part)
+        to_parts = [p.to_name, p.to_email]
+        to_str = " ".join(p_part for p_part in to_parts if p_part)
+        date_str = str(p.timestamp) if p.timestamp else ""
+
+        sections.append(
+            f"From: {from_str}\n"
+            f"To: {to_str}\n"
+            f"Date: {date_str}\n"
+            f"Subject: {p.subject or ''}\n"
             f"Body: {body}"
         )
 
@@ -191,8 +258,11 @@ async def _score_single_email(
 
     user_message = _build_user_message(email, rep_type=rep_type)
 
-    # Choose prompt based on chain position
-    if email.chain_id is not None and (email.position_in_chain or 0) > 1:
+    # Choose prompt based on email type
+    is_follow_up = getattr(email, "_is_follow_up", False)
+    if is_follow_up:
+        blocks = settings.follow_up_email_prompt_blocks or settings.initial_email_prompt_blocks
+    elif email.chain_id is not None and (email.position_in_chain or 0) > 1:
         blocks = settings.chain_email_prompt_blocks
     else:
         blocks = settings.initial_email_prompt_blocks
@@ -232,6 +302,7 @@ async def score_unscored_emails(
 ) -> dict:
     """Score emails that don't yet have a score record.
 
+    Auto-reply emails (is_auto_reply=True) are skipped.
     Emails with empty or very short bodies (under 20 words) are skipped
     entirely - no score row is created since there is no content to
     evaluate. Emails from reps with no rep_type are skipped.
@@ -259,6 +330,7 @@ async def score_unscored_emails(
         "skipped": 0,
         "skipped_untyped": 0,
         "skipped_non_sales": 0,
+        "skipped_auto_reply": 0,
         "errors": 0,
         "batch_errors": 0,
         "total_input_tokens": 0,
@@ -268,6 +340,10 @@ async def score_unscored_emails(
     ids_to_score = []
 
     for email in unscored:
+        if email.is_auto_reply:
+            summary["skipped_auto_reply"] += 1
+            continue
+
         rep_type = rep_type_map.get(email.from_email)
         if rep_type is None:
             summary["skipped_untyped"] += 1
@@ -315,6 +391,18 @@ async def score_unscored_emails(
                 for email in emails:
                     email._chain_context = await _build_chain_context(session, email)
                     email._rep_type = batch_rep_types[email.id]
+                    # Detect follow-ups: no chain_id, has follow-up context
+                    if email.chain_id is None:
+                        fu_context = await _build_follow_up_context(session, email)
+                        if fu_context:
+                            email._follow_up_context = fu_context
+                            email._is_follow_up = True
+                        else:
+                            email._follow_up_context = ""
+                            email._is_follow_up = False
+                    else:
+                        email._follow_up_context = ""
+                        email._is_follow_up = False
 
                 tasks = [
                     _score_single_email(
@@ -371,7 +459,6 @@ async def score_unscored_emails(
     summary["chain_errors"] = chain_result["errors"]
     summary["chains_skipped_untyped"] = chain_result.get("skipped_untyped", 0)
     summary["chains_skipped_non_sales"] = chain_result.get("skipped_non_sales", 0)
-    summary["chains_skipped_unanswered"] = chain_result.get("skipped_unanswered", 0)
     summary["total_input_tokens"] += chain_result["total_input_tokens"]
     summary["total_output_tokens"] += chain_result["total_output_tokens"]
 
@@ -400,7 +487,7 @@ async def score_unscored_chains(
 ) -> dict:
     """Score chains that don't yet have a chain_score record.
 
-    Only chains with email_count >= 2 and is_unanswered=False are scored.
+    All chains with email_count >= 2 are scored (including unanswered).
     Chains where the rep has no rep_type are skipped.
 
     Processes chains in batches of ``batch_size``, committing each batch
@@ -424,7 +511,6 @@ async def score_unscored_chains(
         "batch_errors": 0,
         "skipped_untyped": 0,
         "skipped_non_sales": 0,
-        "skipped_unanswered": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
     }
@@ -439,12 +525,7 @@ async def score_unscored_chains(
         summary["error_message"] = "Chain evaluation prompt blocks not configured in settings"
         return summary
 
-    chain_ids_to_score = []
-    for chain in unscored_chains:
-        if chain.is_unanswered:
-            summary["skipped_unanswered"] += 1
-            continue
-        chain_ids_to_score.append(chain.id)
+    chain_ids_to_score = [chain.id for chain in unscored_chains]
 
     client = AsyncAnthropic()
 

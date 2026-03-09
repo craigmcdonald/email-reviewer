@@ -55,6 +55,11 @@ class TestEmailsTableColumns:
         }
         assert chain_columns <= column_names
 
+    def test_classification_columns(self):
+        column_names = {c.name for c in Email.__table__.columns}
+        assert "is_auto_reply" in column_names
+        assert "quoted_metadata" in column_names
+
 
 class TestScoresTableColumns:
     def test_expected_columns(self):
@@ -146,6 +151,13 @@ class TestSettingsTableColumns:
             "weight_clarity",
         }
         assert new_columns <= column_names
+
+    def test_classifier_and_follow_up_columns(self):
+        from app.models.settings import Settings
+
+        column_names = {c.name for c in Settings.__table__.columns}
+        assert "classifier_prompt_blocks" in column_names
+        assert "follow_up_email_prompt_blocks" in column_names
 
 
 class TestEmailChainEmailRelationship:

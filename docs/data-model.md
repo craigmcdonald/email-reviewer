@@ -29,6 +29,8 @@ Stores email data fetched from HubSpot.
 | message_id | String | Nullable | RFC 2822 Message-ID header |
 | in_reply_to | String | Nullable | RFC 2822 In-Reply-To header |
 | thread_id | String | Nullable | HubSpot thread identifier |
+| is_auto_reply | Boolean | default false | True for auto-replies (OOO, calendar, bounces). Set by the classifier service. |
+| quoted_metadata | JSONB | Nullable | Extracted metadata about quoted emails in the body. Set by the classifier service. Array of `{from_email, subject}` objects. NULL means unclassified. |
 
 ### scores
 
@@ -102,7 +104,8 @@ Single-row application configuration. Seeded on first migration.
 | scoring_batch_size | Integer | | Concurrency limit for Claude API calls. Default 5 |
 | auto_score_after_fetch | Boolean | | When true, fetch also scores unscored emails. Default true |
 | initial_email_prompt_blocks | JSONB | Nullable | Structured prompt blocks for scoring initial cold outreach emails. Keys: `opening`, `value_proposition`, `personalisation`, `cta`, `clarity`, `closing` |
-| chain_email_prompt_blocks | JSONB | Nullable | Structured prompt blocks for scoring follow-up emails within a conversation chain. Same keys as initial_email_prompt_blocks |
+| follow_up_email_prompt_blocks | JSONB | Nullable | Structured prompt blocks for scoring follow-up emails (same sender, same recipient, same normalized subject, no chain_id). Same keys as initial_email_prompt_blocks |
+| classifier_prompt_blocks | JSONB | Nullable | Structured prompt blocks for the Haiku email classifier. Keys: `opening`, `classification`, `quoted_extraction`, `closing` |
 | chain_evaluation_prompt_blocks | JSONB | Nullable | Structured prompt blocks for evaluating conversation chains. Keys: `opening`, `progression`, `responsiveness`, `persistence`, `conversation_quality`, `closing` |
 | weight_value_proposition | Float | | Weight for value_proposition in overall score calculation. Default 0.35 |
 | weight_personalisation | Float | | Weight for personalisation in overall score calculation. Default 0.30 |

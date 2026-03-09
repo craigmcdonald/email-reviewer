@@ -17,6 +17,7 @@ from app.models.email import Email
 from app.models.job import Job
 from app.models.score import Score
 from app.services.chain_builder import build_chains
+from app.services.classifier import classify_emails
 from app.services.export import export_to_excel
 from app.services.fetcher import fetch_and_store
 from app.services.scorer import score_unscored_emails
@@ -147,6 +148,9 @@ async def run_fetch_job(
 
             summary: dict = {"fetched": fetched_count, "new_reps": new_reps_count}
 
+            classify_result = await classify_emails(s)
+            summary["auto_replies"] = classify_result.get("auto_replies_found", 0)
+
             await build_chains(s)
 
             should_score = auto_score if auto_score is not None else settings.auto_score_after_fetch
@@ -260,6 +264,24 @@ async def run_chain_build_job(
 
             chain_result = await build_chains(s)
             _set_completed(job, chain_result)
+            await s.flush()
+
+        except Exception as exc:
+            await _fail_job(s, job_id, exc)
+
+
+async def run_classify_job(
+    session: Optional[AsyncSession], job_id: int
+) -> None:
+    async with _session_scope(session) as s:
+        try:
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
+            _set_running(job)
+            await s.flush()
+
+            classify_result = await classify_emails(s)
+            _set_completed(job, classify_result)
             await s.flush()
 
         except Exception as exc:

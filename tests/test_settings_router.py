@@ -202,7 +202,7 @@ class TestSettingsPage:
         html = resp.text
         assert 'id="initial_opening"' in html
         assert 'id="initial_value_proposition"' in html
-        assert 'id="chain_email_opening"' in html
+        assert 'id="followup_opening"' in html
         assert 'id="chain_eval_opening"' in html
         assert 'id="chain_eval_progression"' in html
 

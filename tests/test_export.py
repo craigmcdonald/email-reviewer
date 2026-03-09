@@ -4,7 +4,7 @@ from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
-from app.services.export import export_rep_emails, export_to_excel
+from app.services.export import export_rep_chains, export_rep_emails, export_to_excel
 
 
 class TestExportToExcel:
@@ -215,3 +215,38 @@ class TestExportRepEmails:
         assert ws.cell(row=2, column=5).fill == yellow  # 6 >= 6
         assert ws.cell(row=2, column=6).fill == orange  # 4 >= 4
         assert ws.cell(row=2, column=7).fill == red     # 2 < 4
+
+
+class TestExportRepChains:
+    async def test_returns_bytes(self, db, make_rep, make_chain, make_email):
+        await make_rep(email="rep@x.com", display_name="Rep")
+        chain = await make_chain(normalized_subject="Test chain")
+        await make_email(
+            from_email="rep@x.com", subject="Test chain",
+            chain_id=chain.id, position_in_chain=1,
+        )
+
+        buf = await export_rep_chains(db, "rep@x.com")
+        assert isinstance(buf, BytesIO)
+        assert len(buf.getvalue()) > 0
+
+    async def test_conversations_sheet_has_expected_headers(
+        self, db, make_rep, make_chain, make_email
+    ):
+        await make_rep(email="rep@x.com", display_name="Rep")
+        chain = await make_chain(normalized_subject="Test chain")
+        await make_email(
+            from_email="rep@x.com", subject="Test chain",
+            chain_id=chain.id, position_in_chain=1,
+        )
+
+        buf = await export_rep_chains(db, "rep@x.com")
+        wb = load_workbook(buf)
+        assert "Conversations" in wb.sheetnames
+        ws = wb["Conversations"]
+        headers = [cell.value for cell in ws[1]]
+        assert headers == [
+            "Subject", "Emails", "Last Activity",
+            "Progression", "Responsiveness", "Persistence",
+            "Quality", "Notes",
+        ]

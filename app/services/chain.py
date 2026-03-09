@@ -81,9 +81,20 @@ async def get_chain_detail(session: AsyncSession, chain_id: int) -> dict | None:
 
 
 async def get_rep_chains(
-    session: AsyncSession, rep_email: str, page: int = 1, per_page: int = 20
+    session: AsyncSession,
+    rep_email: str,
+    page: int = 1,
+    per_page: int = 20,
+    search: str | None = None,
+    date_from=None,
+    date_to=None,
+    score_min: int | None = None,
+    score_max: int | None = None,
+    status: str | None = None,
 ) -> dict:
     """Chains where any email has from_email matching rep_email."""
+    from sqlalchemy import or_
+
     chain_ids_subq = (
         select(Email.chain_id)
         .where(Email.from_email == rep_email, Email.chain_id.isnot(None))
@@ -91,13 +102,43 @@ async def get_rep_chains(
         .subquery()
     )
 
-    count_stmt = select(func.count()).select_from(chain_ids_subq)
+    filters = [EmailChain.id.in_(select(chain_ids_subq.c.chain_id))]
+
+    if search:
+        filters.append(EmailChain.normalized_subject.ilike(f"%{search}%"))
+    if date_from:
+        filters.append(EmailChain.started_at >= date_from)
+    if date_to:
+        filters.append(EmailChain.last_activity_at <= date_to)
+    if status == "unanswered":
+        filters.append(EmailChain.is_unanswered.is_(True))
+    elif status == "answered":
+        filters.append(EmailChain.is_unanswered.is_(False))
+
+    # For score filters, join chain_score
+    if score_min is not None or score_max is not None:
+        base_q = (
+            select(EmailChain)
+            .join(ChainScore, ChainScore.chain_id == EmailChain.id)
+            .where(*filters)
+            .options(joinedload(EmailChain.chain_score))
+        )
+        if score_min is not None:
+            base_q = base_q.where(ChainScore.conversation_quality >= score_min)
+        if score_max is not None:
+            base_q = base_q.where(ChainScore.conversation_quality <= score_max)
+    else:
+        base_q = (
+            select(EmailChain)
+            .where(*filters)
+            .options(joinedload(EmailChain.chain_score))
+        )
+
+    count_stmt = select(func.count()).select_from(base_q.subquery())
     total = (await session.execute(count_stmt)).scalar() or 0
 
     stmt = (
-        select(EmailChain)
-        .where(EmailChain.id.in_(select(chain_ids_subq.c.chain_id)))
-        .options(joinedload(EmailChain.chain_score))
+        base_q
         .order_by(EmailChain.last_activity_at.desc().nullslast())
         .offset((page - 1) * per_page)
         .limit(per_page)

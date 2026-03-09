@@ -933,7 +933,7 @@ class TestScoreUnscoredChains:
         assert result["skipped_non_sales"] == 1
         assert result["chains_scored"] == 0
 
-    async def test_score_unscored_chains_skips_unanswered_reply(self, db, make_chain, make_email, make_rep, make_settings):
+    async def test_score_unscored_chains_scores_unanswered_reply(self, db, make_chain, make_email, make_rep, make_settings):
         await make_settings()
         await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         chain = await make_chain(email_count=2, outgoing_count=1, incoming_count=1, is_unanswered=True)
@@ -950,17 +950,23 @@ class TestScoreUnscoredChains:
             direction="INCOMING_EMAIL",
         )
 
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(
+            text=json.dumps({
+                "progression": 5, "responsiveness": 6,
+                "persistence": 7, "conversation_quality": 6,
+                "notes": "Good conversation",
+            })
+        )]
+        mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
         mock_client_instance = AsyncMock()
+        mock_client_instance.messages.create = AsyncMock(return_value=mock_response)
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
             result = await score_unscored_chains(db)
 
-        mock_client_instance.messages.create.assert_not_called()
-        assert result["skipped_unanswered"] == 1
-        assert result["chains_scored"] == 0
-
-        # No ChainScore created
-        cs_result = await db.execute(select(ChainScore).where(ChainScore.chain_id == chain.id))
-        assert cs_result.scalars().first() is None
+        mock_client_instance.messages.create.assert_called_once()
+        assert result["chains_scored"] == 1
 
     async def test_score_unscored_chains_scores_back_and_forth(self, db, make_chain, make_email, make_rep, make_settings):
         await make_settings()

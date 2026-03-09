@@ -15,6 +15,7 @@ PROMPT_BLOCK_FIELDS = [
     "initial_email_prompt_blocks",
     "chain_email_prompt_blocks",
     "chain_evaluation_prompt_blocks",
+    "follow_up_email_prompt_blocks",
 ]
 
 
@@ -36,6 +37,13 @@ class ChainPromptBlocks(AppBase):
     closing: str
 
 
+class ClassifierPromptBlocks(AppBase):
+    opening: str
+    email_type: str
+    quoted_emails: str
+    closing: str
+
+
 class SettingsResponse(AppBase):
     id: int
     global_start_date: date
@@ -45,6 +53,8 @@ class SettingsResponse(AppBase):
     initial_email_prompt_blocks: EmailPromptBlocks | None = None
     chain_email_prompt_blocks: EmailPromptBlocks | None = None
     chain_evaluation_prompt_blocks: ChainPromptBlocks | None = None
+    follow_up_email_prompt_blocks: EmailPromptBlocks | None = None
+    classifier_prompt_blocks: ClassifierPromptBlocks | None = None
     weight_value_proposition: float = 0.35
     weight_personalisation: float = 0.30
     weight_cta: float = 0.20
@@ -59,6 +69,8 @@ class SettingsUpdate(AppBase):
     initial_email_prompt_blocks: EmailPromptBlocks | None = None
     chain_email_prompt_blocks: EmailPromptBlocks | None = None
     chain_evaluation_prompt_blocks: ChainPromptBlocks | None = None
+    follow_up_email_prompt_blocks: EmailPromptBlocks | None = None
+    classifier_prompt_blocks: ClassifierPromptBlocks | None = None
     weight_value_proposition: float | None = None
     weight_personalisation: float | None = None
     weight_cta: float | None = None
