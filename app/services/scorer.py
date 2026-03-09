@@ -22,6 +22,7 @@ from app.models.settings import (
     Settings,
     assemble_prompt,
 )
+from app.enums import RepType
 from app.schemas.chain_score import ChainScoringResult
 from app.schemas.score import ScoringResult
 from app.services.settings import get_settings
@@ -252,6 +253,7 @@ async def score_unscored_emails(
         "scored": 0,
         "skipped": 0,
         "skipped_untyped": 0,
+        "skipped_non_sales": 0,
         "errors": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
@@ -264,6 +266,11 @@ async def score_unscored_emails(
         rep_type = rep_type_map.get(email.from_email)
         if rep_type is None:
             summary["skipped_untyped"] += 1
+            continue
+
+        # Skip emails from non-sales reps
+        if rep_type == RepType.NON_SALES.value:
+            summary["skipped_non_sales"] += 1
             continue
 
         body = email.body_text or ""
@@ -345,6 +352,7 @@ async def score_unscored_emails(
     summary["chains_scored"] = chain_result["chains_scored"]
     summary["chain_errors"] = chain_result["errors"]
     summary["chains_skipped_untyped"] = chain_result.get("skipped_untyped", 0)
+    summary["chains_skipped_non_sales"] = chain_result.get("skipped_non_sales", 0)
     summary["chains_skipped_unanswered"] = chain_result.get("skipped_unanswered", 0)
     summary["total_input_tokens"] += chain_result["total_input_tokens"]
     summary["total_output_tokens"] += chain_result["total_output_tokens"]
@@ -390,6 +398,7 @@ async def score_unscored_chains(
         "chains_scored": 0,
         "errors": 0,
         "skipped_untyped": 0,
+        "skipped_non_sales": 0,
         "skipped_unanswered": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
@@ -433,6 +442,11 @@ async def score_unscored_chains(
         # Skip chains where the rep has no type
         if rep_type is None:
             summary["skipped_untyped"] += 1
+            continue
+
+        # Skip chains where the rep is non-sales
+        if rep_type == RepType.NON_SALES.value:
+            summary["skipped_non_sales"] += 1
             continue
 
         # Build conversation context
