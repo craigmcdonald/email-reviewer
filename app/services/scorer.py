@@ -234,8 +234,11 @@ async def score_unscored_emails(
 
     Emails with empty or very short bodies (under 20 words) are skipped
     entirely - no score row is created since there is no content to
-    evaluate. Emails from reps with no rep_type are skipped. Returns a
-    summary dict with counts and total tokens used.
+    evaluate. Emails from reps with no rep_type are skipped.
+
+    Processes emails in batches of ``batch_size``, committing each batch
+    to the database before moving on so that completed work survives
+    crashes. Returns a summary dict with counts and total tokens used.
     """
     # Find emails without a score via LEFT JOIN
     stmt = (
@@ -255,6 +258,7 @@ async def score_unscored_emails(
         "skipped_untyped": 0,
         "skipped_non_sales": 0,
         "errors": 0,
+        "batch_errors": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
     }
@@ -284,7 +288,6 @@ async def score_unscored_emails(
 
     if to_score_with_claude:
         client = AsyncAnthropic()
-        semaphore = asyncio.Semaphore(batch_size)
         settings = await get_settings(session)
 
         if not settings.initial_email_prompt_blocks:
@@ -298,54 +301,63 @@ async def score_unscored_emails(
             "weight_clarity": settings.weight_clarity,
         }
 
-        # Pre-build chain context for follow-up emails
-        for email in to_score_with_claude:
-            email._chain_context = await _build_chain_context(session, email)
+        for i in range(0, len(to_score_with_claude), batch_size):
+            batch = to_score_with_claude[i : i + batch_size]
+            try:
+                semaphore = asyncio.Semaphore(batch_size)
 
-        tasks = [
-            _score_single_email(
-                client, email, semaphore, settings,
-                rep_type=getattr(email, "_rep_type", None),
-            )
-            for email in to_score_with_claude
-        ]
-        results = await asyncio.gather(*tasks)
+                # Pre-build chain context for follow-up emails in this batch
+                for email in batch:
+                    email._chain_context = await _build_chain_context(session, email)
 
-        for email, scoring_result in zip(to_score_with_claude, results):
-            if scoring_result is not None:
-                tokens = getattr(scoring_result, "_tokens", {})
-                dimension_scores = {
-                    "value_proposition": scoring_result.value_proposition,
-                    "personalisation": scoring_result.personalisation,
-                    "cta": scoring_result.cta,
-                    "clarity": scoring_result.clarity,
-                }
-                overall = _calculate_weighted_overall(dimension_scores, weights)
-                score = Score(
-                    email_id=email.id,
-                    personalisation=scoring_result.personalisation,
-                    clarity=scoring_result.clarity,
-                    value_proposition=scoring_result.value_proposition,
-                    cta=scoring_result.cta,
-                    overall=overall,
-                    notes=scoring_result.notes,
-                    score_error=False,
-                    scored_at=datetime.utcnow(),
-                )
-                session.add(score)
-                summary["scored"] += 1
-                summary["total_input_tokens"] += tokens.get("input", 0)
-                summary["total_output_tokens"] += tokens.get("output", 0)
-            else:
-                score = Score(
-                    email_id=email.id,
-                    score_error=True,
-                    scored_at=datetime.utcnow(),
-                )
-                session.add(score)
-                summary["errors"] += 1
+                tasks = [
+                    _score_single_email(
+                        client, email, semaphore, settings,
+                        rep_type=getattr(email, "_rep_type", None),
+                    )
+                    for email in batch
+                ]
+                results = await asyncio.gather(*tasks)
 
-    await session.flush()
+                for email, scoring_result in zip(batch, results):
+                    if scoring_result is not None:
+                        tokens = getattr(scoring_result, "_tokens", {})
+                        dimension_scores = {
+                            "value_proposition": scoring_result.value_proposition,
+                            "personalisation": scoring_result.personalisation,
+                            "cta": scoring_result.cta,
+                            "clarity": scoring_result.clarity,
+                        }
+                        overall = _calculate_weighted_overall(dimension_scores, weights)
+                        score = Score(
+                            email_id=email.id,
+                            personalisation=scoring_result.personalisation,
+                            clarity=scoring_result.clarity,
+                            value_proposition=scoring_result.value_proposition,
+                            cta=scoring_result.cta,
+                            overall=overall,
+                            notes=scoring_result.notes,
+                            score_error=False,
+                            scored_at=datetime.utcnow(),
+                        )
+                        session.add(score)
+                        summary["scored"] += 1
+                        summary["total_input_tokens"] += tokens.get("input", 0)
+                        summary["total_output_tokens"] += tokens.get("output", 0)
+                    else:
+                        score = Score(
+                            email_id=email.id,
+                            score_error=True,
+                            scored_at=datetime.utcnow(),
+                        )
+                        session.add(score)
+                        summary["errors"] += 1
+
+                await session.commit()
+            except Exception:
+                logger.exception("Email scoring batch %d failed", i // batch_size)
+                await session.rollback()
+                summary["batch_errors"] += 1
 
     # Score unscored chains after individual emails
     chain_result = await score_unscored_chains(session, batch_size=batch_size)
@@ -383,7 +395,11 @@ async def score_unscored_chains(
     """Score chains that don't yet have a chain_score record.
 
     Only chains with email_count >= 2 and is_unanswered=False are scored.
-    Chains where the rep has no rep_type are skipped. Returns a summary dict.
+    Chains where the rep has no rep_type are skipped.
+
+    Processes chains in batches of ``batch_size``, committing each batch
+    to the database before moving on so that completed work survives
+    crashes. Returns a summary dict.
     """
     stmt = (
         select(EmailChain)
@@ -397,6 +413,7 @@ async def score_unscored_chains(
     summary = {
         "chains_scored": 0,
         "errors": 0,
+        "batch_errors": 0,
         "skipped_untyped": 0,
         "skipped_non_sales": 0,
         "skipped_unanswered": 0,
@@ -414,115 +431,126 @@ async def score_unscored_chains(
         summary["error_message"] = "Chain evaluation prompt blocks not configured in settings"
         return summary
 
-    client = AsyncAnthropic()
-
+    # Filter chains before batching
+    to_score = []
     for chain in unscored_chains:
-        # Skip unanswered replies
         if chain.is_unanswered:
             summary["skipped_unanswered"] += 1
             continue
+        to_score.append(chain)
 
-        # Fetch all emails in this chain
-        email_stmt = (
-            select(Email)
-            .where(Email.chain_id == chain.id)
-            .order_by(Email.position_in_chain)
-        )
-        email_result = await session.execute(email_stmt)
-        chain_emails = email_result.scalars().all()
+    client = AsyncAnthropic()
 
-        # Determine rep from outgoing emails
-        rep_type = None
-        for email in chain_emails:
-            if email.direction == "EMAIL":
-                rep_type = rep_type_map.get(email.from_email)
-                if rep_type is not None:
-                    break
-
-        # Skip chains where the rep has no type
-        if rep_type is None:
-            summary["skipped_untyped"] += 1
-            continue
-
-        # Skip chains where the rep is non-sales
-        if rep_type == RepType.NON_SALES.value:
-            summary["skipped_non_sales"] += 1
-            continue
-
-        # Build conversation context
-        sections = []
-        for email in chain_emails:
-            body = email.body_text or ""
-            if len(body) > MAX_CHAIN_EMAIL_LENGTH:
-                body = body[:MAX_CHAIN_EMAIL_LENGTH]
-
-            from_parts = [email.from_name, email.from_email]
-            from_str = " ".join(p for p in from_parts if p)
-            to_parts = [email.to_name, email.to_email]
-            to_str = " ".join(p for p in to_parts if p)
-            date_str = str(email.timestamp) if email.timestamp else ""
-
-            sections.append(
-                f"From: {from_str}\n"
-                f"To: {to_str}\n"
-                f"Date: {date_str}\n"
-                f"Subject: {email.subject or ''}\n"
-                f"Body: {body}"
-            )
-
-        conversation_text = f"Rep role: {rep_type}\n\n" + "\n---\n".join(sections)
-
-        avg_hours = _compute_avg_response_hours(chain_emails)
-
-        # Call Claude with chain evaluation prompt
-        scoring_result = None
-        total_tokens = {"input": 0, "output": 0}
-
-        for _attempt in range(2):
-            try:
-                response = await client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=300,
-                    system=[{"type": "text", "text": assemble_prompt(settings.chain_evaluation_prompt_blocks, CHAIN_DIMENSIONS)}],
-                    messages=[{"role": "user", "content": conversation_text}],
+    for i in range(0, len(to_score), batch_size):
+        batch = to_score[i : i + batch_size]
+        try:
+            for chain in batch:
+                # Fetch all emails in this chain
+                email_stmt = (
+                    select(Email)
+                    .where(Email.chain_id == chain.id)
+                    .order_by(Email.position_in_chain)
                 )
-                total_tokens["input"] += response.usage.input_tokens
-                total_tokens["output"] += response.usage.output_tokens
-            except RateLimitError:
-                break
+                email_result = await session.execute(email_stmt)
+                chain_emails = email_result.scalars().all()
 
-            try:
-                raw = json.loads(response.content[0].text)
-                scoring_result = ChainScoringResult(**raw)
-                break
-            except (json.JSONDecodeError, ValueError, KeyError):
-                continue
+                # Determine rep from outgoing emails
+                rep_type = None
+                for email in chain_emails:
+                    if email.direction == "EMAIL":
+                        rep_type = rep_type_map.get(email.from_email)
+                        if rep_type is not None:
+                            break
 
-        if scoring_result is not None:
-            chain_score = ChainScore(
-                chain_id=chain.id,
-                progression=scoring_result.progression,
-                responsiveness=scoring_result.responsiveness,
-                persistence=scoring_result.persistence,
-                conversation_quality=scoring_result.conversation_quality,
-                avg_response_hours=avg_hours,
-                notes=scoring_result.notes,
-                score_error=False,
-                scored_at=datetime.utcnow(),
-            )
-            session.add(chain_score)
-            summary["chains_scored"] += 1
-        else:
-            chain_score = ChainScore(
-                chain_id=chain.id,
-                score_error=True,
-                scored_at=datetime.utcnow(),
-            )
-            session.add(chain_score)
-            summary["errors"] += 1
+                # Skip chains where the rep has no type
+                if rep_type is None:
+                    summary["skipped_untyped"] += 1
+                    continue
 
-        summary["total_input_tokens"] += total_tokens["input"]
-        summary["total_output_tokens"] += total_tokens["output"]
+                # Skip chains where the rep is non-sales
+                if rep_type == RepType.NON_SALES.value:
+                    summary["skipped_non_sales"] += 1
+                    continue
 
-    await session.flush()
+                # Build conversation context
+                sections = []
+                for email in chain_emails:
+                    body = email.body_text or ""
+                    if len(body) > MAX_CHAIN_EMAIL_LENGTH:
+                        body = body[:MAX_CHAIN_EMAIL_LENGTH]
+
+                    from_parts = [email.from_name, email.from_email]
+                    from_str = " ".join(p for p in from_parts if p)
+                    to_parts = [email.to_name, email.to_email]
+                    to_str = " ".join(p for p in to_parts if p)
+                    date_str = str(email.timestamp) if email.timestamp else ""
+
+                    sections.append(
+                        f"From: {from_str}\n"
+                        f"To: {to_str}\n"
+                        f"Date: {date_str}\n"
+                        f"Subject: {email.subject or ''}\n"
+                        f"Body: {body}"
+                    )
+
+                conversation_text = f"Rep role: {rep_type}\n\n" + "\n---\n".join(sections)
+
+                avg_hours = _compute_avg_response_hours(chain_emails)
+
+                # Call Claude with chain evaluation prompt
+                scoring_result = None
+                total_tokens = {"input": 0, "output": 0}
+
+                for _attempt in range(2):
+                    try:
+                        response = await client.messages.create(
+                            model="claude-sonnet-4-20250514",
+                            max_tokens=300,
+                            system=[{"type": "text", "text": assemble_prompt(settings.chain_evaluation_prompt_blocks, CHAIN_DIMENSIONS)}],
+                            messages=[{"role": "user", "content": conversation_text}],
+                        )
+                        total_tokens["input"] += response.usage.input_tokens
+                        total_tokens["output"] += response.usage.output_tokens
+                    except RateLimitError:
+                        break
+
+                    try:
+                        raw = json.loads(response.content[0].text)
+                        scoring_result = ChainScoringResult(**raw)
+                        break
+                    except (json.JSONDecodeError, ValueError, KeyError):
+                        continue
+
+                if scoring_result is not None:
+                    chain_score = ChainScore(
+                        chain_id=chain.id,
+                        progression=scoring_result.progression,
+                        responsiveness=scoring_result.responsiveness,
+                        persistence=scoring_result.persistence,
+                        conversation_quality=scoring_result.conversation_quality,
+                        avg_response_hours=avg_hours,
+                        notes=scoring_result.notes,
+                        score_error=False,
+                        scored_at=datetime.utcnow(),
+                    )
+                    session.add(chain_score)
+                    summary["chains_scored"] += 1
+                else:
+                    chain_score = ChainScore(
+                        chain_id=chain.id,
+                        score_error=True,
+                        scored_at=datetime.utcnow(),
+                    )
+                    session.add(chain_score)
+                    summary["errors"] += 1
+
+                summary["total_input_tokens"] += total_tokens["input"]
+                summary["total_output_tokens"] += total_tokens["output"]
+
+            await session.commit()
+        except Exception:
+            logger.exception("Chain scoring batch %d failed", i // batch_size)
+            await session.rollback()
+            summary["batch_errors"] += 1
+
     return summary

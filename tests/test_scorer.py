@@ -626,6 +626,60 @@ class TestScoreUnscoredEmails:
         user_message = call_kwargs.kwargs["messages"][0]["content"]
         assert "Rep role: SDR" in user_message
 
+    async def test_scores_multiple_batches(self, db, make_email, make_rep, make_settings):
+        await make_settings()
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
+        body = "This is a sufficiently long body for testing the scoring service properly and completely to ensure it passes the minimum word count threshold easily"
+        emails = []
+        for _ in range(7):
+            emails.append(await make_email(from_email="rep@example.com", body_text=body))
+
+        email_response = _make_mock_claude_response({
+            "personalisation": 7, "clarity": 8,
+            "value_proposition": 6, "cta": 5, "notes": "Good.",
+        })
+        mock_client_instance = _make_mock_client(email_response)
+
+        with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
+            summary = await score_unscored_emails(db, batch_size=3)
+
+        assert summary["scored"] == 7
+        assert summary["batch_errors"] == 0
+        result = await db.execute(select(Score))
+        assert len(result.scalars().all()) == 7
+
+    async def test_batch_failure_preserves_prior_batches(self, db, make_email, make_rep, make_settings):
+        await make_settings()
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
+        body = "This is a sufficiently long body for testing the scoring service properly and completely to ensure it passes the minimum word count threshold easily"
+        for _ in range(6):
+            await make_email(from_email="rep@example.com", body_text=body)
+
+        valid_json = {
+            "personalisation": 7, "clarity": 8,
+            "value_proposition": 6, "cta": 5, "notes": "Good.",
+        }
+        call_count = 0
+
+        async def _side_effect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            # Fail on the 4th call (first call of second batch)
+            if call_count == 4:
+                raise RuntimeError("Simulated API failure")
+            return _make_mock_claude_response(valid_json)
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.messages.create = AsyncMock(side_effect=_side_effect)
+
+        with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
+            summary = await score_unscored_emails(db, batch_size=3)
+
+        assert summary["scored"] == 3
+        assert summary["batch_errors"] == 1
+        result = await db.execute(select(Score))
+        assert len(result.scalars().all()) == 3
+
 
 class TestScoreUnscoredChains:
     async def test_skips_chains_with_existing_score(self, db, make_chain, make_chain_score, make_email):
