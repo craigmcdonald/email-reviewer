@@ -20,7 +20,9 @@ async def read_settings(session: AsyncSession = Depends(get_db)):
 async def patch_settings(
     updates: SettingsUpdate, session: AsyncSession = Depends(get_db)
 ):
-    return await update_settings(session, updates)
+    result = await update_settings(session, updates)
+    await session.commit()
+    return result
 
 
 @router.get("/api/settings/defaults")
