@@ -16,6 +16,7 @@ Each object includes:
 |-------|------|-------------|
 | email | string | Rep email address |
 | display_name | string | Normalised display name |
+| rep_type | string \| null | SDR, BizDev, AM, or null if untyped |
 | avg_personalisation | float | Average personalisation score |
 | avg_clarity | float | Average clarity score |
 | avg_value_proposition | float | Average value_proposition score |
@@ -23,6 +24,19 @@ Each object includes:
 | avg_overall | float | Average overall score |
 | chain_count | integer | Number of conversation chains involving this rep |
 | avg_chain_score | float | Average chain-level conversation_quality score |
+
+### PATCH /api/reps/{rep_email}
+
+Update a rep's fields. Currently supports setting `rep_type`.
+
+**Request body**: `RepUpdate` - any subset of updatable rep fields.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| rep_type | string | SDR, BizDev, or AM. Rejects invalid values with 422. |
+| display_name | string | Updated display name |
+
+**Response**: `RepResponse` (200) or 404 if rep not found.
 
 ### GET /api/reps/{rep_email}/emails
 

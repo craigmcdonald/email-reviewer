@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.schemas.rep import RepTeamRow
+from app.enums import RepType
+from app.models.rep import Rep
+from app.schemas.rep import RepResponse, RepTeamRow, RepUpdate
 from app.schemas.stats import StatsResponse
 from app.services.chain import get_chain_detail, get_rep_chains
 from app.services.rep import get_email_detail, get_rep_emails, get_stats, get_team
@@ -17,6 +20,7 @@ async def list_reps(session: AsyncSession = Depends(get_db)):
         RepTeamRow(
             email=r.email,
             display_name=r.display_name,
+            rep_type=r.rep_type,
             avg_personalisation=round(r.avg_personalisation, 2) if r.avg_personalisation else None,
             avg_clarity=round(r.avg_clarity, 2) if r.avg_clarity else None,
             avg_value_proposition=round(r.avg_value_proposition, 2) if r.avg_value_proposition else None,
@@ -27,6 +31,34 @@ async def list_reps(session: AsyncSession = Depends(get_db)):
         )
         for r in result["items"]
     ]
+
+
+@router.patch("/reps/{rep_email}", response_model=RepResponse)
+async def update_rep(
+    rep_email: str,
+    payload: RepUpdate,
+    session: AsyncSession = Depends(get_db),
+):
+    stmt = select(Rep).where(Rep.email == rep_email)
+    result = await session.execute(stmt)
+    rep = result.scalars().first()
+    if not rep:
+        raise HTTPException(status_code=404, detail="Rep not found")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        if field == "rep_type" and value is not None:
+            try:
+                RepType(value)
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid rep_type: {value}. Must be one of: {', '.join(t.value for t in RepType)}",
+                )
+        setattr(rep, field, value)
+
+    await session.flush()
+    await session.refresh(rep)
+    return rep
 
 
 @router.get("/reps/{rep_email}/emails")

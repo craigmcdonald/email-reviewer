@@ -26,6 +26,29 @@ class TestTeamPage:
         resp = await client.get("/")
         assert resp.status_code == 200
 
+    async def test_team_page_flags_untyped_rep(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="untyped@example.com", display_name="Untyped Rep")
+        em = await make_email(from_email="untyped@example.com", subject="Test")
+        await make_score(email_id=em.id, overall=7)
+
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        assert "Untyped" in resp.text
+        assert "untyped-rep" in resp.text
+
+    async def test_team_page_shows_rep_type(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="typed@example.com", display_name="Typed Rep", rep_type="SDR")
+        em = await make_email(from_email="typed@example.com", subject="Test")
+        await make_score(email_id=em.id, overall=7)
+
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        assert "SDR" in resp.text
+
 
 class TestRepDetailPage:
     async def test_get_rep_detail_returns_200_when_rep_exists(

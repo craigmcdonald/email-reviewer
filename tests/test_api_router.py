@@ -85,6 +85,33 @@ class TestGetReps:
         assert data[1]["email"] == "low@example.com"
 
 
+class TestSetRepType:
+    async def test_set_rep_type(self, client, make_rep):
+        await make_rep(email="rep@example.com", display_name="Rep One")
+        resp = await client.patch(
+            "/api/reps/rep@example.com",
+            json={"rep_type": "SDR"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["rep_type"] == "SDR"
+
+    async def test_set_rep_type_invalid_value_rejected(self, client, make_rep):
+        await make_rep(email="rep@example.com", display_name="Rep One")
+        resp = await client.patch(
+            "/api/reps/rep@example.com",
+            json={"rep_type": "INVALID"},
+        )
+        assert resp.status_code == 422
+
+    async def test_set_rep_type_returns_404_for_unknown_rep(self, client):
+        resp = await client.patch(
+            "/api/reps/nobody@example.com",
+            json={"rep_type": "AM"},
+        )
+        assert resp.status_code == 404
+
+
 class TestGetRepEmails:
     async def test_returns_scored_emails_for_rep(
         self, client, make_rep, make_email, make_score

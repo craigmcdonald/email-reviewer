@@ -290,6 +290,16 @@ class TestBuildUserMessage:
         result = _build_user_message(email)
         assert "Previous conversation" not in result
 
+    def test_includes_rep_type_when_provided(self):
+        email = Email(from_email="a@b.com", body_text="Some body")
+        result = _build_user_message(email, rep_type="SDR")
+        assert "Rep role: SDR" in result
+
+    def test_no_rep_role_when_type_not_provided(self):
+        email = Email(from_email="a@b.com", body_text="Some body")
+        result = _build_user_message(email)
+        assert "Rep role:" not in result
+
 
 class TestBuildChainContext:
     async def test_returns_empty_when_no_chain(self, db):
@@ -492,7 +502,8 @@ class TestScoreSingleEmail:
 
 
 class TestScoreUnscoredEmails:
-    async def test_skips_already_scored_emails(self, db, make_email, make_score):
+    async def test_skips_already_scored_emails(self, db, make_email, make_score, make_rep):
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         email = await make_email(from_email="rep@example.com", body_text="Some content here for testing the scorer service")
         await make_score(email_id=email.id)
 
@@ -502,7 +513,8 @@ class TestScoreUnscoredEmails:
         mock_cls.assert_not_called()
         assert summary["scored"] == 0
 
-    async def test_skips_empty_body_without_creating_score(self, db, make_email):
+    async def test_skips_empty_body_without_creating_score(self, db, make_email, make_rep):
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         await make_email(from_email="rep@example.com", body_text=None)
 
         with patch("app.services.scorer.AsyncAnthropic") as mock_cls:
@@ -514,7 +526,8 @@ class TestScoreUnscoredEmails:
         result = await db.execute(select(Score))
         assert result.scalars().all() == []
 
-    async def test_skips_short_body_without_creating_score(self, db, make_email):
+    async def test_skips_short_body_without_creating_score(self, db, make_email, make_rep):
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         await make_email(from_email="rep@example.com", body_text="Too short to score")
 
         with patch("app.services.scorer.AsyncAnthropic") as mock_cls:
@@ -526,8 +539,9 @@ class TestScoreUnscoredEmails:
         result = await db.execute(select(Score))
         assert result.scalars().all() == []
 
-    async def test_stores_calculated_overall_not_claude_value(self, db, make_email, make_settings):
+    async def test_stores_calculated_overall_not_claude_value(self, db, make_email, make_settings, make_rep):
         await make_settings()
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         email = await make_email(
             from_email="rep@example.com",
             body_text="This is a sufficiently long body for testing the scoring service properly and completely to ensure it passes the minimum word count threshold easily",
@@ -554,6 +568,46 @@ class TestScoreUnscoredEmails:
         assert score.clarity == 9
         assert score.value_proposition == 8
         assert score.cta == 7
+
+    async def test_score_unscored_emails_skips_untyped_rep(self, db, make_email, make_rep):
+        await make_rep(email="untyped@example.com", display_name="Untyped Rep")
+        await make_email(
+            from_email="untyped@example.com",
+            body_text="This is a sufficiently long body for testing the scoring service properly and completely",
+        )
+
+        with patch("app.services.scorer.AsyncAnthropic") as mock_cls:
+            summary = await score_unscored_emails(db)
+
+        mock_cls.assert_not_called()
+        assert summary["skipped_untyped"] == 1
+        assert summary["scored"] == 0
+
+        result = await db.execute(select(Score))
+        assert result.scalars().all() == []
+
+    async def test_score_unscored_emails_includes_rep_type_in_prompt(self, db, make_email, make_rep, make_settings):
+        await make_settings()
+        await make_rep(email="sdr@example.com", display_name="SDR Rep", rep_type="SDR")
+        await make_email(
+            from_email="sdr@example.com",
+            body_text="This is a sufficiently long body for testing the scoring service properly and completely to ensure it passes the minimum word count threshold easily",
+        )
+
+        email_response = _make_mock_claude_response({
+            "personalisation": 7, "clarity": 8,
+            "value_proposition": 6, "cta": 5, "notes": "Good.",
+        })
+        mock_client_instance = AsyncMock()
+        mock_client_instance.messages.create = AsyncMock(return_value=email_response)
+
+        with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
+            summary = await score_unscored_emails(db)
+
+        assert summary["scored"] == 1
+        call_kwargs = mock_client_instance.messages.create.call_args
+        user_message = call_kwargs.kwargs["messages"][0]["content"]
+        assert "Rep role: SDR" in user_message
 
 
 class TestScoreUnscoredChains:
@@ -591,8 +645,9 @@ class TestScoreUnscoredChains:
         mock_cls.assert_not_called()
         assert result["chains_scored"] == 0
 
-    async def test_creates_chain_score_from_valid_response(self, db, make_chain, make_email, make_settings):
+    async def test_creates_chain_score_from_valid_response(self, db, make_chain, make_email, make_settings, make_rep):
         settings = await make_settings()
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         chain = await make_chain(email_count=2, outgoing_count=2)
         await make_email(
             from_email="rep@example.com", chain_id=chain.id,
@@ -626,8 +681,9 @@ class TestScoreUnscoredChains:
         assert chain_score.conversation_quality == 9
         assert chain_score.notes == "Good chain."
 
-    async def test_computes_avg_response_hours(self, db, make_chain, make_email, make_settings):
+    async def test_computes_avg_response_hours(self, db, make_chain, make_email, make_settings, make_rep):
         settings = await make_settings()
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         chain = await make_chain(email_count=3, outgoing_count=3)
         await make_email(
             from_email="rep@example.com", chain_id=chain.id,
@@ -663,7 +719,7 @@ class TestScoreUnscoredChains:
         # 24h between email 1 and 2, 36h between email 2 and 3 -> avg 30h
         assert chain_score.avg_response_hours == 30.0
 
-    async def test_loads_chain_evaluation_prompt_blocks_from_settings(self, db, make_chain, make_email, make_settings):
+    async def test_loads_chain_evaluation_prompt_blocks_from_settings(self, db, make_chain, make_email, make_settings, make_rep):
         custom_blocks = {
             "opening": "Custom chain eval opening",
             "progression": "Custom prog",
@@ -673,6 +729,7 @@ class TestScoreUnscoredChains:
             "closing": "Custom eval closing",
         }
         settings = await make_settings(chain_evaluation_prompt_blocks=custom_blocks)
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="AM")
         chain = await make_chain(email_count=2, outgoing_count=2)
         await make_email(
             from_email="rep@example.com", chain_id=chain.id,
@@ -702,8 +759,9 @@ class TestScoreUnscoredChains:
         assert "Custom chain eval opening" in system_text
         assert "Custom eval closing" in system_text
 
-    async def test_sets_score_error_after_two_parse_failures(self, db, make_chain, make_email, make_settings):
+    async def test_sets_score_error_after_two_parse_failures(self, db, make_chain, make_email, make_settings, make_rep):
         settings = await make_settings()
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         chain = await make_chain(email_count=2, outgoing_count=2)
         await make_email(
             from_email="rep@example.com", chain_id=chain.id,
@@ -748,23 +806,109 @@ class TestScoreUnscoredChains:
             direction="INCOMING_EMAIL",
         )
 
+        with patch("app.services.scorer.AsyncAnthropic") as mock_cls:
+            result = await score_unscored_chains(db)
+
+        # No outgoing emails means no rep to find type for, skipped as untyped
+        assert result["skipped_untyped"] == 1
+
+    async def test_score_unscored_chains_skips_untyped_rep(self, db, make_chain, make_email, make_rep, make_settings):
+        await make_settings()
+        await make_rep(email="untyped@example.com", display_name="Untyped Rep")
+        chain = await make_chain(email_count=2, outgoing_count=2)
+        await make_email(
+            from_email="untyped@example.com", chain_id=chain.id,
+            position_in_chain=1, body_text="Email 1",
+            timestamp=datetime(2026, 3, 1),
+            direction="EMAIL",
+        )
+        await make_email(
+            from_email="untyped@example.com", chain_id=chain.id,
+            position_in_chain=2, body_text="Email 2",
+            timestamp=datetime(2026, 3, 2),
+            direction="EMAIL",
+        )
+
+        mock_client_instance = AsyncMock()
+        with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
+            result = await score_unscored_chains(db)
+
+        mock_client_instance.messages.create.assert_not_called()
+        assert result["skipped_untyped"] == 1
+        assert result["chains_scored"] == 0
+
+    async def test_score_unscored_chains_skips_unanswered_reply(self, db, make_chain, make_email, make_rep, make_settings):
+        await make_settings()
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
+        chain = await make_chain(email_count=2, outgoing_count=1, incoming_count=1, is_unanswered=True)
+        await make_email(
+            from_email="rep@example.com", chain_id=chain.id,
+            position_in_chain=1, body_text="Outgoing email",
+            timestamp=datetime(2026, 3, 1),
+            direction="EMAIL",
+        )
+        await make_email(
+            from_email="client@example.com", chain_id=chain.id,
+            position_in_chain=2, body_text="Reply from prospect",
+            timestamp=datetime(2026, 3, 2),
+            direction="INCOMING_EMAIL",
+        )
+
+        mock_client_instance = AsyncMock()
+        with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
+            result = await score_unscored_chains(db)
+
+        mock_client_instance.messages.create.assert_not_called()
+        assert result["skipped_unanswered"] == 1
+        assert result["chains_scored"] == 0
+
+        # No ChainScore created
+        cs_result = await db.execute(select(ChainScore).where(ChainScore.chain_id == chain.id))
+        assert cs_result.scalars().first() is None
+
+    async def test_score_unscored_chains_scores_back_and_forth(self, db, make_chain, make_email, make_rep, make_settings):
+        await make_settings()
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="BizDev")
+        chain = await make_chain(email_count=3, outgoing_count=2, incoming_count=1, is_unanswered=False)
+        await make_email(
+            from_email="rep@example.com", chain_id=chain.id,
+            position_in_chain=1, body_text="Initial outreach",
+            timestamp=datetime(2026, 3, 1),
+            direction="EMAIL",
+        )
+        await make_email(
+            from_email="client@example.com", chain_id=chain.id,
+            position_in_chain=2, body_text="Reply from prospect",
+            timestamp=datetime(2026, 3, 2),
+            direction="INCOMING_EMAIL",
+        )
+        await make_email(
+            from_email="rep@example.com", chain_id=chain.id,
+            position_in_chain=3, body_text="Follow up from rep",
+            timestamp=datetime(2026, 3, 3),
+            direction="EMAIL",
+        )
+
         valid_response = _make_mock_claude_response({
-            "progression": 5, "responsiveness": 5,
-            "persistence": 5, "conversation_quality": 5,
-            "notes": "No outgoing.",
+            "progression": 8, "responsiveness": 7,
+            "persistence": 6, "conversation_quality": 9,
+            "notes": "Good back and forth.",
         })
         mock_client_instance = _make_mock_client(valid_response)
 
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
             result = await score_unscored_chains(db)
 
+        assert result["chains_scored"] == 1
         cs_result = await db.execute(select(ChainScore).where(ChainScore.chain_id == chain.id))
         chain_score = cs_result.scalar_one()
-        assert chain_score.avg_response_hours is None
+        assert chain_score.progression == 8
+        assert chain_score.score_error is False
 
 
 class TestRunRescoreJob:
-    async def test_deletes_chain_scores_before_rescoring(self, db, make_chain, make_chain_score, make_email, make_score, make_job):
+    async def test_deletes_chain_scores_before_rescoring(self, db, make_chain, make_chain_score, make_email, make_score, make_job, make_rep):
+        await make_rep(email="rep@example.com", display_name="Rep", rep_type="SDR")
         # Chain with only 1 email so it won't be re-scored by score_unscored_chains
         chain = await make_chain(email_count=1, outgoing_count=1)
         await make_chain_score(chain_id=chain.id)

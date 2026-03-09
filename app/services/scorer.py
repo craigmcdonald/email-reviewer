@@ -14,6 +14,7 @@ from sqlalchemy.orm import joinedload
 from app.models.chain import EmailChain
 from app.models.chain_score import ChainScore
 from app.models.email import Email
+from app.models.rep import Rep
 from app.models.score import Score
 from app.models.settings import (
     CHAIN_DIMENSIONS,
@@ -46,7 +47,7 @@ def _calculate_weighted_overall(scores: dict, weights: dict) -> int:
     return max(1, min(10, rounded))
 
 
-def _build_user_message(email: Email) -> str:
+def _build_user_message(email: Email, rep_type: str | None = None) -> str:
     """Format email metadata and body into a prompt string for Claude."""
     body = email.body_text or ""
     if len(body) > MAX_BODY_LENGTH:
@@ -61,6 +62,10 @@ def _build_user_message(email: Email) -> str:
     to_str = " ".join(p for p in to_parts if p)
 
     parts = []
+
+    # Include rep role context when available
+    if rep_type:
+        parts.append(f"Rep role: {rep_type}")
 
     # Include chain context for follow-up emails
     chain_context = getattr(email, "_chain_context", None)
@@ -170,6 +175,7 @@ async def _score_single_email(
     email: Email,
     semaphore: asyncio.Semaphore,
     settings: Settings,
+    rep_type: str | None = None,
 ) -> ScoringResult | None:
     """Call Claude to score one email. Retry once on parse failure.
 
@@ -182,7 +188,7 @@ async def _score_single_email(
         pass  # already set
     email._chain_context = chain_context
 
-    user_message = _build_user_message(email)
+    user_message = _build_user_message(email, rep_type=rep_type)
 
     # Choose prompt based on chain position
     if email.chain_id is not None and (email.position_in_chain or 0) > 1:
@@ -213,14 +219,22 @@ async def _score_single_email(
     return None
 
 
+async def _get_rep_type_map(session: AsyncSession) -> dict[str, str | None]:
+    """Load a mapping of rep email -> rep_type for all reps."""
+    stmt = select(Rep.email, Rep.rep_type)
+    result = await session.execute(stmt)
+    return {row.email: row.rep_type for row in result.all()}
+
+
 async def score_unscored_emails(
     session: AsyncSession, batch_size: int = 5
 ) -> dict:
     """Score emails that don't yet have a score record.
 
     Emails with empty or very short bodies (under 20 words) are skipped
-    entirely — no score row is created since there is no content to
-    evaluate. Returns a summary dict with counts and total tokens used.
+    entirely - no score row is created since there is no content to
+    evaluate. Emails from reps with no rep_type are skipped. Returns a
+    summary dict with counts and total tokens used.
     """
     # Find emails without a score via LEFT JOIN
     stmt = (
@@ -231,10 +245,13 @@ async def score_unscored_emails(
     result = await session.execute(stmt)
     unscored = result.scalars().all()
 
+    rep_type_map = await _get_rep_type_map(session)
+
     summary = {
         "total_unscored": len(unscored),
         "scored": 0,
         "skipped": 0,
+        "skipped_untyped": 0,
         "errors": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
@@ -243,12 +260,19 @@ async def score_unscored_emails(
     to_score_with_claude = []
 
     for email in unscored:
+        # Skip emails from reps with no rep_type
+        rep_type = rep_type_map.get(email.from_email)
+        if rep_type is None:
+            summary["skipped_untyped"] += 1
+            continue
+
         body = email.body_text or ""
         word_count = len(body.split()) if body.strip() else 0
 
         if not body.strip() or word_count < MIN_WORD_COUNT:
             summary["skipped"] += 1
         else:
+            email._rep_type = rep_type
             to_score_with_claude.append(email)
 
     if to_score_with_claude:
@@ -272,7 +296,10 @@ async def score_unscored_emails(
             email._chain_context = await _build_chain_context(session, email)
 
         tasks = [
-            _score_single_email(client, email, semaphore, settings)
+            _score_single_email(
+                client, email, semaphore, settings,
+                rep_type=getattr(email, "_rep_type", None),
+            )
             for email in to_score_with_claude
         ]
         results = await asyncio.gather(*tasks)
@@ -317,6 +344,8 @@ async def score_unscored_emails(
     chain_result = await score_unscored_chains(session, batch_size=batch_size)
     summary["chains_scored"] = chain_result["chains_scored"]
     summary["chain_errors"] = chain_result["errors"]
+    summary["chains_skipped_untyped"] = chain_result.get("skipped_untyped", 0)
+    summary["chains_skipped_unanswered"] = chain_result.get("skipped_unanswered", 0)
     summary["total_input_tokens"] += chain_result["total_input_tokens"]
     summary["total_output_tokens"] += chain_result["total_output_tokens"]
 
@@ -345,7 +374,8 @@ async def score_unscored_chains(
 ) -> dict:
     """Score chains that don't yet have a chain_score record.
 
-    Only chains with email_count >= 2 are scored. Returns a summary dict.
+    Only chains with email_count >= 2 and is_unanswered=False are scored.
+    Chains where the rep has no rep_type are skipped. Returns a summary dict.
     """
     stmt = (
         select(EmailChain)
@@ -359,6 +389,8 @@ async def score_unscored_chains(
     summary = {
         "chains_scored": 0,
         "errors": 0,
+        "skipped_untyped": 0,
+        "skipped_unanswered": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
     }
@@ -366,6 +398,7 @@ async def score_unscored_chains(
     if not unscored_chains:
         return summary
 
+    rep_type_map = await _get_rep_type_map(session)
     settings = await get_settings(session)
 
     if not settings.chain_evaluation_prompt_blocks:
@@ -375,6 +408,11 @@ async def score_unscored_chains(
     client = AsyncAnthropic()
 
     for chain in unscored_chains:
+        # Skip unanswered replies
+        if chain.is_unanswered:
+            summary["skipped_unanswered"] += 1
+            continue
+
         # Fetch all emails in this chain
         email_stmt = (
             select(Email)
@@ -383,6 +421,19 @@ async def score_unscored_chains(
         )
         email_result = await session.execute(email_stmt)
         chain_emails = email_result.scalars().all()
+
+        # Determine rep from outgoing emails
+        rep_type = None
+        for email in chain_emails:
+            if email.direction == "EMAIL":
+                rep_type = rep_type_map.get(email.from_email)
+                if rep_type is not None:
+                    break
+
+        # Skip chains where the rep has no type
+        if rep_type is None:
+            summary["skipped_untyped"] += 1
+            continue
 
         # Build conversation context
         sections = []
@@ -405,7 +456,7 @@ async def score_unscored_chains(
                 f"Body: {body}"
             )
 
-        conversation_text = "\n---\n".join(sections)
+        conversation_text = f"Rep role: {rep_type}\n\n" + "\n---\n".join(sections)
 
         avg_hours = _compute_avg_response_hours(chain_emails)
 

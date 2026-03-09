@@ -22,7 +22,7 @@ Dependencies flow strictly left to right.
 
 | Layer | Location | Role |
 |-------|----------|------|
-| Enums | `app/enums.py` | `(str, Enum)` definitions shared by models and schemas. Serialise as plain strings in the database and JSON. Includes `EmailDirection`, `JobType` (FETCH, SCORE, RESCORE, EXPORT, Chain_Build), `JobStatus`. |
+| Enums | `app/enums.py` | `(str, Enum)` definitions shared by models and schemas. Serialise as plain strings in the database and JSON. Includes `EmailDirection`, `JobType` (FETCH, SCORE, RESCORE, EXPORT, Chain_Build), `JobStatus`, `RepType` (SDR, BizDev, AM). |
 | Models | `app/models/` | SQLAlchemy ORM layer. One file per domain entity. All inherit `AuditMixin` and `Base`. |
 | Schemas | `app/schemas/` | Pydantic validation. Three schemas per entity: `Create`, `Update`, `Response`. One file per domain. |
 | Services | `app/services/` | Business logic. Pure functions where possible. Separated from routers. |
@@ -81,6 +81,7 @@ Seven tables:
 |--------|------|-------|
 | email | String (PK) | Canonical email address |
 | display_name | String | Normalised display name |
+| rep_type | String | Nullable. SDR, BizDev, or AM. New reps from the fetcher start untyped (NULL). |
 
 **settings** - Single-row application configuration. Seeded on first migration.
 
@@ -195,19 +196,20 @@ Returns the number of emails stored.
 The entry point is `score_unscored_emails(session, batch_size=5)`, which:
 
 1. Queries emails with no matching score record (LEFT JOIN scores WHERE NULL).
-2. Skips emails with empty or very short bodies (under 20 words) — no score row is created since there is no content to evaluate.
-3. Loads the scoring prompt from settings: `initial_email_prompt` for standalone emails or first-in-chain, `chain_email_prompt` for follow-up emails (position_in_chain > 1).
-4. For follow-up emails, pre-builds chain context via `_build_chain_context()` — prior emails in the chain, each truncated to 2000 characters, included as a "Previous conversation" section in the user message.
-5. Sends remaining emails to Claude concurrently, capped by an asyncio semaphore (`batch_size`).
-6. Retries on rate limit (429) errors using the `retry-after` header from the API response, up to 5 attempts. Falls back to 60 seconds when the header is missing.
-7. Retries once on JSON parse failure. After two consecutive failures, writes a score row with `score_error=True`.
-8. Parses 4 dimensions from Claude (personalisation, clarity, value_proposition, cta) via the `ScoringResult` Pydantic model. Calculates `overall` as a weighted average using weights from settings via `_calculate_weighted_overall()`. Stores all 5 values in the scores table.
-9. Calls `score_unscored_chains()` after individual scoring.
-10. Returns a summary dict with counts (`total_unscored`, `scored`, `skipped`, `errors`, `chains_scored`, `chain_errors`) and token usage.
+2. Skips emails from reps with no `rep_type` set - the `skipped_untyped` count in the summary tracks how many were skipped for this reason.
+3. Skips emails with empty or very short bodies (under 20 words) - no score row is created since there is no content to evaluate.
+4. Loads the scoring prompt from settings: `initial_email_prompt` for standalone emails or first-in-chain, `chain_email_prompt` for follow-up emails (position_in_chain > 1).
+5. For follow-up emails, pre-builds chain context via `_build_chain_context()` - prior emails in the chain, each truncated to 2000 characters, included as a "Previous conversation" section in the user message.
+6. Sends remaining emails to Claude concurrently, capped by an asyncio semaphore (`batch_size`). The user message includes the rep's type (e.g. "Rep role: SDR") so Claude can evaluate role-appropriately.
+7. Retries on rate limit (429) errors using the `retry-after` header from the API response, up to 5 attempts. Falls back to 60 seconds when the header is missing.
+8. Retries once on JSON parse failure. After two consecutive failures, writes a score row with `score_error=True`.
+9. Parses 4 dimensions from Claude (personalisation, clarity, value_proposition, cta) via the `ScoringResult` Pydantic model. Calculates `overall` as a weighted average using weights from settings via `_calculate_weighted_overall()`. Stores all 5 values in the scores table.
+10. Calls `score_unscored_chains()` after individual scoring.
+11. Returns a summary dict with counts (`total_unscored`, `scored`, `skipped`, `skipped_untyped`, `errors`, `chains_scored`, `chain_errors`, `chains_skipped_untyped`, `chains_skipped_unanswered`) and token usage.
 
 `_calculate_weighted_overall(scores, weights)` is a pure function that computes the weighted sum of the 4 dimensions, rounds to the nearest integer, and clamps the result to 1-10.
 
-`_build_user_message(email)` formats the email's From, To, Subject, Date, and Body fields into a prompt string. Body text is truncated to 4000 characters. For follow-up emails, a "Previous conversation" section with chain context is prepended.
+`_build_user_message(email, rep_type=None)` formats the email's From, To, Subject, Date, and Body fields into a prompt string. When `rep_type` is provided, a "Rep role: {type}" line is prepended. Body text is truncated to 4000 characters. For follow-up emails, a "Previous conversation" section with chain context is prepended.
 
 `_build_chain_context(session, email)` fetches all prior emails in the same chain (by position), formats each with From/To/Date/Subject/Body (body truncated to 2000 chars), and joins them with separators. Returns empty string for emails without a chain or at position 1.
 
@@ -217,12 +219,14 @@ The entry point is `score_unscored_emails(session, batch_size=5)`, which:
 
 `score_unscored_chains(session, batch_size=5)` scores conversation chains that have no chain_score record and have email_count >= 2:
 
-1. Builds full conversation context from all chain emails.
-2. Sends to Claude with `settings.chain_evaluation_prompt`.
-3. Parses 4 chain dimensions (progression, responsiveness, persistence, conversation_quality) via `ChainScoringResult`.
-4. Computes `avg_response_hours` from timestamps of consecutive outgoing emails.
-5. Retries once on parse failure. After two failures, writes a chain_score with `score_error=True`.
-6. Returns a summary dict with `chains_scored`, `errors`, and token usage.
+1. Skips chains where `is_unanswered` is true - unanswered replies get no ChainScore.
+2. Skips chains where the rep (identified from outgoing emails) has no `rep_type` set.
+3. Builds full conversation context from all chain emails, prefixed with the rep's role (e.g. "Rep role: BizDev").
+4. Sends to Claude with `settings.chain_evaluation_prompt`.
+5. Parses 4 chain dimensions (progression, responsiveness, persistence, conversation_quality) via `ChainScoringResult`.
+6. Computes `avg_response_hours` from timestamps of consecutive outgoing emails.
+7. Retries once on parse failure. After two failures, writes a chain_score with `score_error=True`.
+8. Returns a summary dict with `chains_scored`, `errors`, `skipped_untyped`, `skipped_unanswered`, and token usage.
 
 ## Chain Builder
 
@@ -265,7 +269,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 
 | Route | View |
 |-------|------|
-| `GET /` | Team page — rep table with colour-coded average scores, links to rep detail. Accepts `?page=1&per_page=20` query params for pagination. `per_page=0` returns all results. |
+| `GET /` | Team page - rep table with colour-coded average scores, rep type column (untyped reps flagged with yellow badge), type selector dropdown, links to rep detail. Accepts `?page=1&per_page=20` query params for pagination. `per_page=0` returns all results. |
 | `GET /reps/{rep_email}` | Rep detail page — scored email list with expandable body preview, plus a Chains section showing the rep's conversation chains. Accepts `?page=1&per_page=20` query params for pagination. `per_page=0` returns all results. Also accepts `?search=`, `?date_from=YYYY-MM-DD`, `?date_to=YYYY-MM-DD`, `?score_min=1..10`, `?score_max=1..10` for filtering. Filters apply via ILIKE on subject/body, inclusive date range on timestamp, and inclusive range on overall score. |
 | `GET /reps/{rep_email}/export` | Downloads an Excel (.xlsx) file of the rep's scored emails. Accepts the same filter query params as the detail page plus `?export_all=true` to ignore filters and include all emails. |
 | `GET /chains/{chain_id}` | Chain detail page — full conversation thread in chronological order. Each email shows direction, sender, recipient, timestamp, subject, body preview, and individual score. Chain score panel at top with all 4 dimensions and avg_response_hours. Accessed from the rep detail page's Chains section. |
@@ -280,7 +284,8 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 
 | Route | Response |
 |-------|----------|
-| `GET /api/reps` | List of `RepTeamRow` objects sorted by overall avg descending. Each object includes `chain_count` and `avg_chain_score` fields. |
+| `GET /api/reps` | List of `RepTeamRow` objects sorted by overall avg descending. Each object includes `rep_type`, `chain_count` and `avg_chain_score` fields. |
+| `PATCH /api/reps/{rep_email}` | Partial update of rep fields (e.g. `rep_type`). Rejects invalid `rep_type` values with 422. Returns updated `RepResponse`. |
 | `GET /api/reps/{rep_email}/emails` | Scored emails for one rep, ordered by date descending |
 | `GET /api/reps/{rep_email}/chains` | Paginated chains where the rep is a sender. Returns `{items, total, page, per_page}`. |
 | `GET /api/chains/{chain_id}` | Single chain with all emails in timestamp order and chain_score. Returns 404 if not found. |

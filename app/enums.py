@@ -10,6 +10,15 @@ class EmailDirection(str, Enum):
         return self.value
 
 
+class RepType(str, Enum):
+    SDR = "SDR"
+    BIZDEV = "BizDev"
+    AM = "AM"
+
+    def __str__(self) -> str:
+        return self.value
+
+
 class JobType(str, Enum):
     FETCH = "FETCH"
     SCORE = "SCORE"
