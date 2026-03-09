@@ -25,7 +25,7 @@ def _paginate_result(items, total: int, page: int, per_page: int | None):
 async def get_team(
     session: AsyncSession, *, page: int = 1, per_page: int | None = 20
 ):
-    """JOIN emails/scores/reps, GROUP BY rep, compute AVGs, sort by overall desc."""
+    """All reps with score averages (null if unscored), sorted by overall desc."""
     # Subquery for chain stats per rep
     chain_subq = (
         select(
@@ -50,28 +50,38 @@ async def get_team(
         .subquery()
     )
 
-    base = (
+    # Subquery for per-rep score averages
+    score_subq = (
         select(
-            Rep.email,
-            Rep.display_name,
-            Rep.rep_type,
+            Email.from_email.label("rep_email"),
             func.avg(Score.personalisation).label("avg_personalisation"),
             func.avg(Score.clarity).label("avg_clarity"),
             func.avg(Score.value_proposition).label("avg_value_proposition"),
             func.avg(Score.cta).label("avg_cta"),
             func.avg(Score.overall).label("avg_overall"),
+        )
+        .join(Score, Score.email_id == Email.id)
+        .group_by(Email.from_email)
+        .subquery()
+    )
+
+    base = (
+        select(
+            Rep.email,
+            Rep.display_name,
+            Rep.rep_type,
+            score_subq.c.avg_personalisation,
+            score_subq.c.avg_clarity,
+            score_subq.c.avg_value_proposition,
+            score_subq.c.avg_cta,
+            score_subq.c.avg_overall,
             chain_subq.c.chain_count,
             chain_score_subq.c.avg_chain_score,
         )
-        .join(Email, Email.from_email == Rep.email)
-        .join(Score, Score.email_id == Email.id)
+        .outerjoin(score_subq, score_subq.c.rep_email == Rep.email)
         .outerjoin(chain_subq, chain_subq.c.rep_email == Rep.email)
         .outerjoin(chain_score_subq, chain_score_subq.c.rep_email == Rep.email)
-        .group_by(
-            Rep.email, Rep.display_name, Rep.rep_type,
-            chain_subq.c.chain_count, chain_score_subq.c.avg_chain_score,
-        )
-        .order_by(func.avg(Score.overall).desc())
+        .order_by(score_subq.c.avg_overall.desc().nullslast())
     )
 
     count_stmt = select(func.count()).select_from(base.subquery())
