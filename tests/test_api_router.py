@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 
@@ -179,3 +181,115 @@ class TestGetStats:
         assert data["total_emails"] == 0
         assert data["total_scored"] == 0
         assert data["total_reps"] == 0
+
+
+class TestGetRepEmailsType:
+    async def test_type_outreach_filters_correctly(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="rep@example.com", display_name="Rep")
+        e1 = await make_email(
+            from_email="rep@example.com", to_email="p@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id, overall=7)
+        # Follow-up (same subject, same recipient)
+        e2 = await make_email(
+            from_email="rep@example.com", to_email="p@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id, overall=6)
+
+        resp = await client.get("/api/reps/rep@example.com/emails", params={"type": "outreach"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["id"] == e1.id
+
+    async def test_type_follow_up_filters_correctly(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="rep@example.com", display_name="Rep")
+        e1 = await make_email(
+            from_email="rep@example.com", to_email="p@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id, overall=7)
+        e2 = await make_email(
+            from_email="rep@example.com", to_email="p@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id, overall=6)
+
+        resp = await client.get("/api/reps/rep@example.com/emails", params={"type": "follow_up"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["id"] == e2.id
+
+    async def test_type_unanswered_filters_correctly(
+        self, client, make_rep, make_email, make_score, make_chain
+    ):
+        await make_rep(email="rep@example.com", display_name="Rep")
+        # Unanswered chain
+        chain = await make_chain(
+            normalized_subject="Thread",
+            is_unanswered=True,
+            incoming_count=1,
+            outgoing_count=1,
+        )
+        await make_email(
+            from_email="rep@example.com", subject="Thread",
+            chain_id=chain.id, position_in_chain=1,
+        )
+        # Back-and-forth chain
+        chain2 = await make_chain(
+            normalized_subject="Chat",
+            is_unanswered=False,
+            incoming_count=1,
+            outgoing_count=2,
+        )
+        await make_email(
+            from_email="rep@example.com", subject="Chat",
+            chain_id=chain2.id, position_in_chain=1,
+        )
+
+        resp = await client.get("/api/reps/rep@example.com/emails", params={"type": "unanswered"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["id"] == chain.id
+
+    async def test_type_chain_filters_correctly(
+        self, client, make_rep, make_email, make_score, make_chain, make_chain_score
+    ):
+        await make_rep(email="rep@example.com", display_name="Rep")
+        # Unanswered chain
+        chain_u = await make_chain(
+            normalized_subject="Unanswered",
+            is_unanswered=True,
+            incoming_count=1,
+            outgoing_count=1,
+        )
+        await make_email(
+            from_email="rep@example.com", subject="Unanswered",
+            chain_id=chain_u.id, position_in_chain=1,
+        )
+        # Back-and-forth chain
+        chain_bf = await make_chain(
+            normalized_subject="Back and forth",
+            is_unanswered=False,
+            incoming_count=1,
+            outgoing_count=2,
+        )
+        await make_email(
+            from_email="rep@example.com", subject="Back and forth",
+            chain_id=chain_bf.id, position_in_chain=1,
+        )
+        await make_chain_score(chain_id=chain_bf.id, conversation_quality=8)
+
+        resp = await client.get("/api/reps/rep@example.com/emails", params={"type": "chain"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["id"] == chain_bf.id

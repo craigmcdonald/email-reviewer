@@ -4,6 +4,7 @@ from datetime import date, datetime
 import pytest
 
 from app.services.rep import get_rep_emails, get_team
+from app.services.chain_builder import normalize_subject
 
 
 async def _make_scored_rep(make_rep, make_email, make_score, email, name, count=1):
@@ -271,3 +272,152 @@ class TestGetRepEmailsFilters:
             db, "rep@x.com", score_min=5, page=2, per_page=3
         )
         assert len(page2["items"]) == 2
+
+
+class TestGetRepEmailsEmailType:
+    """Tests for the email_type parameter on get_rep_emails()."""
+
+    async def test_outreach_returns_standalone_emails(
+        self, db, make_rep, make_email, make_score
+    ):
+        await make_rep(email="rep@x.com", display_name="Rep")
+        e = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Intro", chain_id=None,
+        )
+        await make_score(email_id=e.id)
+
+        result = await get_rep_emails(db, "rep@x.com", email_type="outreach")
+        assert result["total"] == 1
+        assert result["items"][0].id == e.id
+
+    async def test_outreach_returns_first_to_prospect(
+        self, db, make_rep, make_email, make_score
+    ):
+        """When a rep sends multiple emails to the same prospect with the same
+        normalized subject (no chain_id), the first one is outreach."""
+        await make_rep(email="rep@x.com", display_name="Rep")
+        e1 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id)
+        e2 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id)
+
+        result = await get_rep_emails(db, "rep@x.com", email_type="outreach")
+        assert result["total"] == 1
+        assert result["items"][0].id == e1.id
+
+    async def test_outreach_excludes_follow_ups(
+        self, db, make_rep, make_email, make_score
+    ):
+        """Follow-ups (position > 1 in a same-subject sequence) are excluded."""
+        await make_rep(email="rep@x.com", display_name="Rep")
+        e1 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id)
+        e2 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Re: Hello", timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id)
+
+        result = await get_rep_emails(db, "rep@x.com", email_type="outreach")
+        ids = [item.id for item in result["items"]]
+        assert e1.id in ids
+        assert e2.id not in ids
+
+    async def test_follow_up_returns_subsequent_sends_no_reply(
+        self, db, make_rep, make_email, make_score
+    ):
+        """Follow-up: same from, to, normalized subject, position > 1, no chain_id."""
+        await make_rep(email="rep@x.com", display_name="Rep")
+        e1 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id)
+        e2 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Re: Hello", timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id)
+        e3 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 10),
+        )
+        await make_score(email_id=e3.id)
+
+        result = await get_rep_emails(db, "rep@x.com", email_type="follow_up")
+        ids = [item.id for item in result["items"]]
+        assert e2.id in ids
+        assert e3.id in ids
+        assert e1.id not in ids
+
+    async def test_follow_up_excludes_first_email(
+        self, db, make_rep, make_email, make_score
+    ):
+        """The first email in a sequence is outreach, not follow-up."""
+        await make_rep(email="rep@x.com", display_name="Rep")
+        e1 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id)
+        e2 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id)
+
+        result = await get_rep_emails(db, "rep@x.com", email_type="follow_up")
+        ids = [item.id for item in result["items"]]
+        assert e1.id not in ids
+        assert e2.id in ids
+
+    async def test_follow_up_excludes_emails_in_chains(
+        self, db, make_rep, make_email, make_score, make_chain
+    ):
+        """Emails with chain_id are chains/unanswered, not follow-ups."""
+        await make_rep(email="rep@x.com", display_name="Rep")
+        chain = await make_chain(normalized_subject="Hello")
+        e1 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", chain_id=chain.id, position_in_chain=1,
+            timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id)
+        e2 = await make_email(
+            from_email="rep@x.com", to_email="prospect@y.com",
+            subject="Hello", chain_id=chain.id, position_in_chain=2,
+            timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id)
+
+        result = await get_rep_emails(db, "rep@x.com", email_type="follow_up")
+        assert result["total"] == 0
+
+    async def test_no_type_returns_all(
+        self, db, make_rep, make_email, make_score
+    ):
+        """Default (no email_type) returns all scored emails."""
+        await make_rep(email="rep@x.com", display_name="Rep")
+        e1 = await make_email(
+            from_email="rep@x.com", to_email="a@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 1),
+        )
+        await make_score(email_id=e1.id)
+        e2 = await make_email(
+            from_email="rep@x.com", to_email="a@y.com",
+            subject="Hello", timestamp=datetime(2024, 1, 5),
+        )
+        await make_score(email_id=e2.id)
+
+        result = await get_rep_emails(db, "rep@x.com", email_type=None)
+        assert result["total"] == 2

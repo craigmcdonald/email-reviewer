@@ -113,7 +113,7 @@ async def rep_detail(
     parsed_score_max = _parse_int(score_max)
 
     effective_per_page = per_page or None
-    email_result = await get_rep_emails(
+    outreach_result = await get_rep_emails(
         session,
         rep_email,
         page=page,
@@ -123,24 +123,37 @@ async def rep_detail(
         date_to=parsed_date_to,
         score_min=parsed_score_min,
         score_max=parsed_score_max,
+        email_type="outreach",
+    )
+
+    followup_result = await get_rep_emails(
+        session,
+        rep_email,
+        page=1,
+        per_page=100,
+        email_type="follow_up",
     )
 
     rep_chains_result = await get_rep_chains(session, rep_email, page=1, per_page=100)
+    unanswered_chains = [c for c in rep_chains_result["items"] if c.get("is_unanswered")]
+    back_and_forth_chains = [c for c in rep_chains_result["items"] if not c.get("is_unanswered")]
 
     start = (page - 1) * per_page + 1 if per_page else 1
-    end = start + len(email_result["items"]) - 1 if email_result["items"] else 0
+    end = start + len(outreach_result["items"]) - 1 if outreach_result["items"] else 0
     return templates.TemplateResponse(
         request,
         "rep_detail.html",
         {
             "rep": rep,
-            "emails": email_result["items"],
-            "chains": rep_chains_result["items"],
+            "emails": outreach_result["items"],
+            "followups": followup_result["items"],
+            "unanswered_chains": unanswered_chains,
+            "chains": back_and_forth_chains,
             "score_class": score_class,
-            "page": email_result["page"],
+            "page": outreach_result["page"],
             "per_page": per_page,
-            "total": email_result["total"],
-            "pages": email_result["pages"],
+            "total": outreach_result["total"],
+            "pages": outreach_result["pages"],
             "start": start,
             "end": end,
             "search": search,

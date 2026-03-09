@@ -1,4 +1,4 @@
-"""Visual test: take screenshots of the settings page.
+"""Visual test: take screenshots of dashboard pages.
 
 Seeds PostgreSQL via sync psycopg2, starts uvicorn as a subprocess,
 takes screenshots with Selenium.
@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -23,9 +23,13 @@ os.environ["AUTH_ENABLED"] = "FALSE"
 os.environ["CURRENT_USER"] = "test"
 os.environ["DATABASE_URL"] = DB_URL
 
-from app.models import Email, Job, Rep, Score, Settings  # noqa: F401
+from app.models import ChainScore, Email, EmailChain, Job, Rep, Score, Settings  # noqa: F401
 from app.models.base import Base
 from scripts.seeds.settings import SETTINGS_SEED
+
+REP_EMAIL = "zacharybell@native.fm"
+PROSPECT_EMAIL = "nicholas.c@hoyoverse.com"
+PROSPECT2_EMAIL = "lab@unorthodoxroasters.co.uk"
 
 # Seed database
 sync_engine = create_engine(DB_URL)
@@ -43,6 +47,205 @@ with Session(sync_engine) as session:
         chain_email_prompt_blocks=SETTINGS_SEED["chain_email_prompt_blocks"].copy(),
         chain_evaluation_prompt_blocks=SETTINGS_SEED["chain_evaluation_prompt_blocks"].copy(),
     ))
+
+    # Rep
+    session.add(Rep(email=REP_EMAIL, display_name="Zachary Bell", rep_type="SDR"))
+    session.flush()
+
+    # --- 1. Outreach: standalone emails (no chain_id) ---
+    e1 = Email(
+        from_email=REP_EMAIL, to_email=PROSPECT_EMAIL,
+        from_name="Zachary Bell", to_name="Nicholas Chang",
+        subject="Native & HoYoverse - 2026 Student Opportunities",
+        body_text="Hi Nicholas,\n\nI wanted to reach out about campus marketing opportunities for HoYoverse in 2026.",
+        direction="EMAIL", hubspot_id="out-1",
+        timestamp=datetime(2026, 3, 2, 9, 0),
+    )
+    session.add(e1)
+    session.flush()
+    session.add(Score(
+        email_id=e1.id, personalisation=6, clarity=8, value_proposition=7, cta=6, overall=7,
+        notes="Good opening with clear value proposition for campus marketing.",
+    ))
+
+    e2 = Email(
+        from_email=REP_EMAIL, to_email="pharmacie@pharmacie.coffee",
+        from_name="Zachary Bell", to_name="Pharmacie Coffee",
+        subject="Campus coffee partnership - Native",
+        body_text="Hi there,\n\nI'd love to discuss a campus coffee partnership with Pharmacie.",
+        direction="EMAIL", hubspot_id="out-2",
+        timestamp=datetime(2026, 3, 3, 10, 0),
+    )
+    session.add(e2)
+    session.flush()
+    session.add(Score(
+        email_id=e2.id, personalisation=5, clarity=7, value_proposition=6, cta=5, overall=6,
+        notes="Decent clarity but lacks personalisation.",
+    ))
+
+    e3 = Email(
+        from_email=REP_EMAIL, to_email=PROSPECT2_EMAIL,
+        from_name="Zachary Bell", to_name="Unorthodox Roasters",
+        subject="Your competition's already on campus",
+        body_text="Hi,\n\nDid you know your competitors are already running campaigns on campus?",
+        direction="EMAIL", hubspot_id="out-3",
+        timestamp=datetime(2026, 3, 2, 7, 0),
+    )
+    session.add(e3)
+    session.flush()
+    session.add(Score(
+        email_id=e3.id, personalisation=4, clarity=6, value_proposition=7, cta=5, overall=5,
+        notes="Competitive angle works but feels generic.",
+    ))
+
+    # --- 2. Follow-up sequence: same rep, same prospect, same subject ---
+    e4 = Email(
+        from_email=REP_EMAIL, to_email="drew.watson@damgroupuk.com",
+        from_name="Zachary Bell", to_name="Drew Watson",
+        subject="Final nudge - promise I'll stop after this",
+        body_text="Hi Drew,\n\nJust a quick follow-up on my previous email about campus advertising.",
+        direction="EMAIL", hubspot_id="fu-1",
+        timestamp=datetime(2026, 3, 2, 7, 3),
+    )
+    session.add(e4)
+    session.flush()
+    session.add(Score(
+        email_id=e4.id, personalisation=3, clarity=6, value_proposition=5, cta=4, overall=4,
+        notes="First touch in sequence - decent but generic.",
+    ))
+
+    e5 = Email(
+        from_email=REP_EMAIL, to_email="drew.watson@damgroupuk.com",
+        from_name="Zachary Bell", to_name="Drew Watson",
+        subject="Re: Final nudge - promise I'll stop after this",
+        body_text="Hi Drew,\n\nFollowing up on my last message. Would love to connect.",
+        direction="EMAIL", hubspot_id="fu-2",
+        timestamp=datetime(2026, 3, 4, 9, 0),
+    )
+    session.add(e5)
+    session.flush()
+    session.add(Score(
+        email_id=e5.id, personalisation=2, clarity=5, value_proposition=4, cta=3, overall=3,
+        notes="Follow-up lacks new value.",
+    ))
+
+    e6 = Email(
+        from_email=REP_EMAIL, to_email="drew.watson@damgroupuk.com",
+        from_name="Zachary Bell", to_name="Drew Watson",
+        subject="Final nudge - promise I'll stop after this",
+        body_text="Drew, last attempt. Let me know if campus ads are on your radar for 2026.",
+        direction="EMAIL", hubspot_id="fu-3",
+        timestamp=datetime(2026, 3, 6, 8, 0),
+    )
+    session.add(e6)
+    session.flush()
+    session.add(Score(
+        email_id=e6.id, personalisation=2, clarity=5, value_proposition=3, cta=4, overall=3,
+        notes="Third attempt with diminishing returns.",
+    ))
+
+    # --- 3. Unanswered reply: rep sends, prospect replies, rep silent ---
+    chain_u = EmailChain(
+        normalized_subject="Native & HoYoverse - 2026 Student Opportunities",
+        participants=f"{PROSPECT_EMAIL},{REP_EMAIL}",
+        started_at=datetime(2026, 3, 2, 9, 0),
+        last_activity_at=datetime(2026, 3, 2, 14, 0),
+        email_count=2, outgoing_count=1, incoming_count=1,
+        is_unanswered=True,
+    )
+    session.add(chain_u)
+    session.flush()
+
+    eu1 = Email(
+        from_email=REP_EMAIL, to_email=PROSPECT_EMAIL,
+        from_name="Zachary Bell", to_name="Nicholas Chang",
+        subject="Campus sampling opportunity",
+        body_text="Hi Nicholas,\n\nWanted to share a sampling opportunity on campus.",
+        direction="EMAIL", hubspot_id="ua-1",
+        timestamp=datetime(2026, 3, 2, 9, 0),
+        chain_id=chain_u.id, position_in_chain=1,
+    )
+    session.add(eu1)
+    session.flush()
+    session.add(Score(
+        email_id=eu1.id, personalisation=5, clarity=7, value_proposition=6, cta=5, overall=6,
+        notes="Reasonable opening.",
+    ))
+
+    eu2 = Email(
+        from_email=PROSPECT_EMAIL, to_email=REP_EMAIL,
+        from_name="Nicholas Chang", to_name="Zachary Bell",
+        subject="Re: Campus sampling opportunity",
+        body_text="Hi Zach,\n\nInteresting - can you send more details on pricing?",
+        direction="INCOMING_EMAIL", hubspot_id="ua-2",
+        timestamp=datetime(2026, 3, 2, 14, 0),
+        chain_id=chain_u.id, position_in_chain=2,
+    )
+    session.add(eu2)
+    # No chain score for unanswered
+
+    # --- 4. Back-and-forth chain with chain score ---
+    chain_bf = EmailChain(
+        normalized_subject="Native & HoYoverse - 2026 Student Opportunities",
+        participants=f"{PROSPECT_EMAIL},{REP_EMAIL}",
+        started_at=datetime(2026, 3, 2, 2, 51),
+        last_activity_at=datetime(2026, 3, 2, 5, 57),
+        email_count=3, outgoing_count=2, incoming_count=1,
+        is_unanswered=False,
+    )
+    session.add(chain_bf)
+    session.flush()
+
+    ec1 = Email(
+        from_email=REP_EMAIL, to_email=PROSPECT_EMAIL,
+        from_name="Zachary Bell", to_name="Nicholas Chang",
+        subject="Native campus partnership proposal",
+        body_text="Hi Nicholas,\n\nI'd like to propose a campus partnership for HoYoverse.",
+        direction="EMAIL", hubspot_id="ch-1",
+        timestamp=datetime(2026, 3, 2, 2, 51),
+        chain_id=chain_bf.id, position_in_chain=1,
+    )
+    session.add(ec1)
+    session.flush()
+    session.add(Score(
+        email_id=ec1.id, personalisation=7, clarity=8, value_proposition=7, cta=6, overall=7,
+        notes="Strong opening with clear proposal.",
+    ))
+
+    ec2 = Email(
+        from_email=PROSPECT_EMAIL, to_email=REP_EMAIL,
+        from_name="Nicholas Chang", to_name="Zachary Bell",
+        subject="Re: Native campus partnership proposal",
+        body_text="Hi Zach,\n\nI will be sending out the brief ASAP, then we can have the call.",
+        direction="INCOMING_EMAIL", hubspot_id="ch-2",
+        timestamp=datetime(2026, 3, 2, 4, 30),
+        chain_id=chain_bf.id, position_in_chain=2,
+    )
+    session.add(ec2)
+
+    ec3 = Email(
+        from_email=REP_EMAIL, to_email=PROSPECT_EMAIL,
+        from_name="Zachary Bell", to_name="Nicholas Chang",
+        subject="Re: Native campus partnership proposal",
+        body_text="Great, looking forward to the brief. Let me know when works for the call.",
+        direction="EMAIL", hubspot_id="ch-3",
+        timestamp=datetime(2026, 3, 2, 5, 57),
+        chain_id=chain_bf.id, position_in_chain=3,
+    )
+    session.add(ec3)
+    session.flush()
+    session.add(Score(
+        email_id=ec3.id, personalisation=6, clarity=7, value_proposition=5, cta=7, overall=6,
+        notes="Good follow-through on conversation.",
+    ))
+
+    session.add(ChainScore(
+        chain_id=chain_bf.id,
+        progression=7, responsiveness=8, persistence=6, conversation_quality=6,
+        avg_response_hours=1.5,
+        notes="Good progression with call scheduling. Responsive follow-up.",
+    ))
+
     session.commit()
 
 sync_engine.dispose()
@@ -86,6 +289,7 @@ driver = webdriver.Chrome(options=chrome_options)
 
 urls = {
     "team": f"http://127.0.0.1:{PORT}/",
+    "rep_detail": f"http://127.0.0.1:{PORT}/reps/{REP_EMAIL}",
     "settings_general": f"http://127.0.0.1:{PORT}/settings?tab=general",
     "settings_evaluation": f"http://127.0.0.1:{PORT}/settings?tab=evaluation",
 }

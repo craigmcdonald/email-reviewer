@@ -84,6 +84,33 @@ async def get_team(
     return _paginate_result(result.all(), total, page, per_page)
 
 
+async def _follow_up_ids(session, rep_email: str) -> set[int]:
+    """Return IDs of emails that are follow-ups: same from_email, to_email,
+    normalized subject, no chain_id, position > 1 ordered by timestamp."""
+    from app.services.chain_builder import normalize_subject
+
+    stmt = (
+        select(Email)
+        .where(Email.from_email == rep_email, Email.chain_id.is_(None))
+        .order_by(Email.timestamp.asc())
+    )
+    result = await session.execute(stmt)
+    emails = result.scalars().all()
+
+    # Group by (from_email, to_email, normalized_subject)
+    groups: dict[tuple[str, str, str], list[int]] = {}
+    for e in emails:
+        key = (e.from_email, e.to_email or "", normalize_subject(e.subject))
+        groups.setdefault(key, []).append(e.id)
+
+    follow_up_set: set[int] = set()
+    for ids in groups.values():
+        if len(ids) > 1:
+            # Skip the first (outreach), rest are follow-ups
+            follow_up_set.update(ids[1:])
+    return follow_up_set
+
+
 async def get_rep_emails(
     session: AsyncSession,
     rep_email: str,
@@ -95,6 +122,7 @@ async def get_rep_emails(
     date_to: date | None = None,
     score_min: int | None = None,
     score_max: int | None = None,
+    email_type: str | None = None,
 ):
     """Scored emails for one rep, ordered by date desc.
 
@@ -102,8 +130,23 @@ async def get_rep_emails(
     - search: ILIKE match on subject or body_text
     - date_from / date_to: inclusive range on email timestamp
     - score_min / score_max: inclusive range on overall score
+    - email_type: "outreach" (no chain_id, first in sequence),
+      "follow_up" (no chain_id, subsequent in sequence)
     """
     filters = [Email.from_email == rep_email]
+
+    if email_type in ("outreach", "follow_up"):
+        filters.append(Email.chain_id.is_(None))
+        fu_ids = await _follow_up_ids(session, rep_email)
+        if email_type == "outreach":
+            if fu_ids:
+                filters.append(Email.id.notin_(fu_ids))
+        elif email_type == "follow_up":
+            if fu_ids:
+                filters.append(Email.id.in_(fu_ids))
+            else:
+                # No follow-ups exist - return empty
+                filters.append(Email.id == -1)
 
     if search:
         pattern = f"%{search}%"
