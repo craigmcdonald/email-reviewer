@@ -6,14 +6,16 @@ class TestRepType:
         assert RepType.SDR.value == "SDR"
         assert RepType.BIZDEV.value == "BizDev"
         assert RepType.AM.value == "AM"
+        assert RepType.NON_SALES.value == "Non-Sales"
 
     def test_serialises_as_plain_strings(self):
         assert str(RepType.SDR) == "SDR"
         assert str(RepType.BIZDEV) == "BizDev"
         assert str(RepType.AM) == "AM"
+        assert str(RepType.NON_SALES) == "Non-Sales"
 
-    def test_has_exactly_three_members(self):
-        assert len(RepType) == 3
+    def test_has_exactly_four_members(self):
+        assert len(RepType) == 4
 
 
 class TestEmailDirection:

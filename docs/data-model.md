@@ -88,7 +88,7 @@ Canonical rep identities for name normalisation and team aggregation.
 |--------|------|-------------|-------|
 | email | String | PK | Canonical email address |
 | display_name | String | | Normalised display name |
-| rep_type | String | Nullable | SDR, BizDev, or AM. New reps start untyped (NULL). Untyped reps are not scored. |
+| rep_type | String | Nullable | SDR, BizDev, AM, or Non-Sales. New reps start unassigned (NULL). Unassigned and Non-Sales reps are not scored. |
 
 ### settings
 

@@ -106,6 +106,16 @@ class TestSetRepType:
         )
         assert resp.status_code == 422
 
+    async def test_set_rep_type_non_sales(self, client, make_rep):
+        await make_rep(email="rep@example.com", display_name="Rep One")
+        resp = await client.patch(
+            "/api/reps/rep@example.com",
+            json={"rep_type": "Non-Sales"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["rep_type"] == "Non-Sales"
+
     async def test_set_rep_type_returns_404_for_unknown_rep(self, client):
         resp = await client.patch(
             "/api/reps/nobody@example.com",

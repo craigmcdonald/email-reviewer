@@ -14,6 +14,7 @@ class RepType(str, Enum):
     SDR = "SDR"
     BIZDEV = "BizDev"
     AM = "AM"
+    NON_SALES = "Non-Sales"
 
     def __str__(self) -> str:
         return self.value
