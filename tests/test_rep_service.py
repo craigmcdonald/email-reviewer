@@ -58,6 +58,18 @@ class TestGetTeamPagination:
         assert result["per_page"] is None
         assert result["pages"] == 1
 
+    async def test_rep_with_no_scored_emails_appears(self, db, make_rep):
+        await make_rep(email="new@x.com", display_name="New Rep")
+        result = await get_team(db)
+        assert result["total"] == 1
+        row = result["items"][0]
+        assert row.email == "new@x.com"
+        assert row.avg_overall is None
+        assert row.avg_personalisation is None
+        assert row.avg_clarity is None
+        assert row.avg_value_proposition is None
+        assert row.avg_cta is None
+
     async def test_per_page_zero_returns_all(self, db, make_rep, make_email, make_score):
         for i in range(5):
             await _make_scored_rep(

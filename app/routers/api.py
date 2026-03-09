@@ -56,7 +56,7 @@ async def update_rep(
                 )
         setattr(rep, field, value)
 
-    await session.flush()
+    await session.commit()
     await session.refresh(rep)
     return rep
 
