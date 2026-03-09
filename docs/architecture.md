@@ -124,6 +124,7 @@ Seven tables:
 | email_count | Integer | Total emails in the chain |
 | outgoing_count | Integer | Outgoing emails in the chain |
 | incoming_count | Integer | Incoming emails in the chain |
+| is_unanswered | Boolean | True when prospect replied but rep has not followed up. Default false |
 
 **chain_scores** - Conversation-level scoring results. One-to-one with email_chains (cascade delete).
 
@@ -179,7 +180,7 @@ Managed by Alembic with async support. The `alembic/env.py` file converts Postgr
 `app/services/fetcher.py` ingests outgoing and incoming emails from the HubSpot CRM v3 search API. The entry point is `fetch_and_store(session, access_token, company_domains, ...)`, which:
 
 1. Calls `fetch_emails_from_hubspot()` to paginate through HubSpot search results with retry logic (exponential backoff on errors, respects `Retry-After` on 429s). When `max_count` is set, passes `max_results=int(max_count * 1.5)` to stop pagination early — the 1.5x multiplier accounts for irrelevant emails that will be filtered out. HubSpot's search API has a 10,000 result paging limit; when hit, the fetcher automatically subdivides the date range into halves and fetches each recursively, deduplicating by HubSpot ID at the boundary.
-2. Calls `filter_relevant_emails()` to keep emails involving company reps. EMAIL direction is kept when the from_email domain is in company_domains (outgoing from our rep). INCOMING_EMAIL direction is kept when the to_email domain is in company_domains (reply to our rep). FORWARDED_EMAIL and all other directions are dropped.
+2. Calls `filter_relevant_emails()` to keep emails involving company reps. EMAIL direction is kept when the from_email domain is in company_domains (outgoing from our rep), unless the subject starts with `Email: >>` (HubSpot activity log records, not real emails). INCOMING_EMAIL direction is kept when the to_email domain is in company_domains (reply to our rep). FORWARDED_EMAIL and all other directions are dropped.
 3. Applies `max_count` (if provided) to the filtered list, limiting stored emails.
 4. Calls `upsert_emails_to_db()` to upsert on `hubspot_id` and auto-create Rep records for new sender addresses (outgoing emails only). Parses `hs_timestamp` from HubSpot into the `timestamp` column. Stores engagement metrics (open_count, click_count, reply_count) and threading headers (message_id, in_reply_to, thread_id).
 
@@ -231,13 +232,16 @@ The entry point is `score_unscored_emails(session, batch_size=5)`, which:
 2. Runs three matching passes in priority order:
    - **Message-ID threading**: Links emails where one's `in_reply_to` matches another's `message_id`.
    - **Thread-ID grouping**: Groups unchained emails that share the same HubSpot `thread_id`. Does not merge chains already formed by message-ID matching.
-   - **Subject + participant fallback**: Groups remaining unchained emails by normalized subject, at least one overlapping participant (`from_email` or `to_email`), and timestamps within 30 days.
-3. For each group of 2+ emails: creates an `EmailChain` row with `normalized_subject`, sorted comma-separated `participants`, `started_at`, `last_activity_at`, `email_count`, `outgoing_count`, `incoming_count`. Sets `chain_id` and `position_in_chain` (1-based, by timestamp) on each email.
+   - **Subject + participant fallback**: Groups remaining unchained emails by normalized subject, at least one overlapping non-sender participant, and timestamps within 30 days. Each email's `from_email` is excluded from its own participant set for overlap comparison - overlap must exist on the recipient side of at least one email. This prevents mass sends (same subject to many different recipients) from being incorrectly chained.
+3. Applies chain creation criteria to each group:
+   - **Follow-up sequence** (`incoming_count == 0`): all outgoing, no replies. No `EmailChain` record is created and no `chain_id` is set on the emails. These are identified at query time.
+   - **Unanswered reply** (`incoming_count > 0`, no outgoing email after the last incoming): creates an `EmailChain` record with `is_unanswered=True`. Gets `chain_id` and `position_in_chain` set but will not be chain-scored.
+   - **Chain** (at least one outgoing email after an incoming email): creates an `EmailChain` record with `is_unanswered=False`. Gets `chain_id`, `position_in_chain`, and will be chain-scored.
 4. Returns a dict with `chains_created`, `chains_updated`, and `emails_linked` counts.
 
 The service is idempotent - running it twice produces the same result. Existing chain assignments are cleared and rebuilt on each run.
 
-`normalize_subject(subject)` is a pure function that recursively strips `Re:`, `RE:`, `Fwd:`, `FW:`, `Fw:` prefixes and trims whitespace. Returns empty string for `None` input.
+`normalize_subject(subject)` is a pure function that recursively strips `Re:`, `RE:`, `Fwd:`, `FW:`, `Fw:`, and `Email: >>` prefixes and trims whitespace. Returns empty string for `None` input.
 
 ## Exporter
 

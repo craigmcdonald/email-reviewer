@@ -13,6 +13,7 @@ from app.services.fetcher import (
     upsert_emails_to_db,
 )
 from tests.fixtures.hubspot import (
+    ACTIVITY_LOG_EMAIL,
     FORWARDED_EMAIL,
     INCOMING_EMAIL,
     INCOMING_REPLY,
@@ -86,6 +87,20 @@ class TestFilterRelevantEmails:
     def test_drops_null_from_email(self):
         result = filter_relevant_emails([NULL_METADATA_EMAIL], COMPANY_DOMAINS)
         assert result == []
+
+    def test_drops_email_with_email_arrow_subject_prefix(self):
+        result = filter_relevant_emails([ACTIVITY_LOG_EMAIL], COMPANY_DOMAINS)
+        assert result == []
+
+    def test_keeps_email_with_email_word_in_subject(self):
+        email = make_hubspot_email(
+            id="email-word",
+            hs_email_direction="EMAIL",
+            hs_email_from_email="rep@native.fm",
+            hs_email_subject="Email Marketing Tips",
+        )
+        result = filter_relevant_emails([email], COMPANY_DOMAINS)
+        assert len(result) == 1
 
     def test_mixed_input_filters_correctly(self):
         emails = [

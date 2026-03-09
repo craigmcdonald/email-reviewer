@@ -271,6 +271,25 @@ SHORT_BODY_EMAIL = make_hubspot_email(
     ),
 )
 
+# HubSpot activity log with "Email: >>" subject prefix and NULL body.
+# These are CRM activity records, not real emails.
+ACTIVITY_LOG_EMAIL = make_hubspot_email(
+    id="467890418884",
+    hs_createdate="2026-03-02T07:01:27.312Z",
+    hs_timestamp="2026-03-02T07:01:27.312Z",
+    hs_email_subject="Email: >> Your competition's already on campus…",
+    hs_email_from_email="palomahegarty@native.fm",
+    hs_email_from_firstname="Paloma",
+    hs_email_from_lastname="Hegarty",
+    hs_email_to_email="pharmacie@pharmacie.coffee",
+    hs_email_to_firstname="Pharmacie",
+    hs_email_to_lastname="Pharmacie",
+    hs_email_direction="EMAIL",
+    hs_email_status="SENT",
+    hubspot_owner_id="78033054",
+    hs_email_text=None,
+)
+
 # Second incoming email - external contact replying to a rep.
 INCOMING_REPLY = make_hubspot_email(
     id="439578758363",

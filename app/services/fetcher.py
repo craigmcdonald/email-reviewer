@@ -67,6 +67,9 @@ def filter_relevant_emails(
             domain = from_email.rsplit("@", 1)[1].lower()
             if domain not in lower_domains:
                 continue
+            subject = props.get("hs_email_subject") or ""
+            if subject.startswith("Email: >>"):
+                continue
             result.append(email)
 
         elif direction == "INCOMING_EMAIL":
