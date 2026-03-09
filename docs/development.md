@@ -104,6 +104,7 @@ Tests use an in-memory SQLite database, so no PostgreSQL setup is needed. Config
 Key test options (already configured in `pytest.ini`):
 - `--maxfail=3` stops after 3 failures
 - `--cov=app` measures coverage of the `app/` package
+- `--ignore=tests/visual` excludes Selenium visual tests from default runs
 - `asyncio_mode = auto` enables async tests without explicit markers
 
 Test fixtures (conftest.py factories, HubSpot response builders) are documented in [testing-guide.md](testing-guide.md).
