@@ -54,6 +54,7 @@ async def get_team(
         select(
             Rep.email,
             Rep.display_name,
+            Rep.rep_type,
             func.avg(Score.personalisation).label("avg_personalisation"),
             func.avg(Score.clarity).label("avg_clarity"),
             func.avg(Score.value_proposition).label("avg_value_proposition"),
@@ -67,7 +68,7 @@ async def get_team(
         .outerjoin(chain_subq, chain_subq.c.rep_email == Rep.email)
         .outerjoin(chain_score_subq, chain_score_subq.c.rep_email == Rep.email)
         .group_by(
-            Rep.email, Rep.display_name,
+            Rep.email, Rep.display_name, Rep.rep_type,
             chain_subq.c.chain_count, chain_score_subq.c.avg_chain_score,
         )
         .order_by(func.avg(Score.overall).desc())

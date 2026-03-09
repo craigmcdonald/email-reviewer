@@ -7,6 +7,7 @@
         <thead class="bg-gray-50">
             <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rep</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Overall</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Personalisation</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Clarity</th>
@@ -22,6 +23,19 @@
                 <td class="px-6 py-4 whitespace-nowrap">
                     <a href="/reps/{{ row.email }}" class="text-blue-600 hover:underline">{{ row.display_name }}</a>
                 </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    {% if row.rep_type %}
+                        <span class="text-sm">{{ row.rep_type }}</span>
+                    {% else %}
+                        <span class="untyped-rep inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Untyped</span>
+                    {% endif %}
+                    <select class="rep-type-select ml-1 text-xs border rounded px-1 py-0.5" data-rep-email="{{ row.email }}" onchange="setRepType(this)">
+                        <option value="">--</option>
+                        <option value="SDR" {{ 'selected' if row.rep_type == 'SDR' }}>SDR</option>
+                        <option value="BizDev" {{ 'selected' if row.rep_type == 'BizDev' }}>BizDev</option>
+                        <option value="AM" {{ 'selected' if row.rep_type == 'AM' }}>AM</option>
+                    </select>
+                </td>
                 <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_overall) }}">{{ "%.1f"|format(row.avg_overall) if row.avg_overall is not none else "—" }}</span></td>
                 <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_personalisation) }}">{{ "%.1f"|format(row.avg_personalisation) if row.avg_personalisation is not none else "—" }}</span></td>
                 <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_clarity) }}">{{ "%.1f"|format(row.avg_clarity) if row.avg_clarity is not none else "—" }}</span></td>
@@ -32,11 +46,26 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="8" class="px-6 py-4 text-center text-gray-500">No scored reps yet.</td>
+                <td colspan="9" class="px-6 py-4 text-center text-gray-500">No scored reps yet.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 {% include "_pagination.html" %}
+<script>
+async function setRepType(selectEl) {
+    const email = selectEl.dataset.repEmail;
+    const value = selectEl.value;
+    if (!value) return;
+    const resp = await fetch(`/api/reps/${encodeURIComponent(email)}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({rep_type: value}),
+    });
+    if (resp.ok) {
+        window.location.reload();
+    }
+}
+</script>
 {% endblock %}

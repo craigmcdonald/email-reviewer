@@ -1,4 +1,19 @@
-from app.enums import EmailDirection, JobType
+from app.enums import EmailDirection, JobType, RepType
+
+
+class TestRepType:
+    def test_rep_type_values(self):
+        assert RepType.SDR.value == "SDR"
+        assert RepType.BIZDEV.value == "BizDev"
+        assert RepType.AM.value == "AM"
+
+    def test_serialises_as_plain_strings(self):
+        assert str(RepType.SDR) == "SDR"
+        assert str(RepType.BIZDEV) == "BizDev"
+        assert str(RepType.AM) == "AM"
+
+    def test_has_exactly_three_members(self):
+        assert len(RepType) == 3
 
 
 class TestEmailDirection:
