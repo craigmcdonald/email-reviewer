@@ -23,9 +23,17 @@ def _paginate_result(items, total: int, page: int, per_page: int | None):
 
 
 async def get_team(
-    session: AsyncSession, *, page: int = 1, per_page: int | None = 20
+    session: AsyncSession,
+    *,
+    page: int = 1,
+    per_page: int | None = 20,
+    rep_type: str | None = None,
 ):
-    """All reps with score averages (null if unscored), sorted by overall desc."""
+    """All reps with score averages (null if unscored), sorted by overall desc.
+
+    Optional filters:
+    - rep_type: filter by RepType value, or "Unassigned" for reps with no type set.
+    """
     # Subquery for chain stats per rep
     chain_subq = (
         select(
@@ -83,6 +91,11 @@ async def get_team(
         .outerjoin(chain_score_subq, chain_score_subq.c.rep_email == Rep.email)
         .order_by(score_subq.c.avg_overall.desc().nullslast())
     )
+
+    if rep_type == "Unassigned":
+        base = base.where(Rep.rep_type.is_(None))
+    elif rep_type:
+        base = base.where(Rep.rep_type == rep_type)
 
     count_stmt = select(func.count()).select_from(base.subquery())
     total = (await session.execute(count_stmt)).scalar() or 0

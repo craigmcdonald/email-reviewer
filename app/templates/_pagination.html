@@ -4,6 +4,7 @@
 {% if date_to is defined and date_to %}{% set ns.filter_qs = ns.filter_qs ~ "&date_to=" ~ date_to %}{% endif %}
 {% if score_min is defined and score_min %}{% set ns.filter_qs = ns.filter_qs ~ "&score_min=" ~ score_min %}{% endif %}
 {% if score_max is defined and score_max %}{% set ns.filter_qs = ns.filter_qs ~ "&score_max=" ~ score_max %}{% endif %}
+{% if rep_type_filter is defined and rep_type_filter %}{% set ns.filter_qs = ns.filter_qs ~ "&rep_type=" ~ rep_type_filter %}{% endif %}
 {% if total > 0 %}
 <div class="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-600" id="pagination">
     <div>

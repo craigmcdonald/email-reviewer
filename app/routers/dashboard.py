@@ -35,10 +35,13 @@ async def team(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=0),
+    rep_type: str = Query(""),
     session: AsyncSession = Depends(get_db),
 ):
     effective_per_page = per_page or None
-    result = await get_team(session, page=page, per_page=effective_per_page)
+    result = await get_team(
+        session, page=page, per_page=effective_per_page, rep_type=rep_type or None
+    )
     start = (page - 1) * per_page + 1 if per_page else 1
     end = start + len(result["items"]) - 1 if result["items"] else 0
     return templates.TemplateResponse(
@@ -53,6 +56,7 @@ async def team(
             "pages": result["pages"],
             "start": start,
             "end": end,
+            "rep_type_filter": rep_type,
         },
     )
 
