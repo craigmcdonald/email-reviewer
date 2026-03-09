@@ -137,9 +137,9 @@ class TestSettingsTableColumns:
 
         column_names = {c.name for c in Settings.__table__.columns}
         new_columns = {
-            "initial_email_prompt",
-            "chain_email_prompt",
-            "chain_evaluation_prompt",
+            "initial_email_prompt_blocks",
+            "chain_email_prompt_blocks",
+            "chain_evaluation_prompt_blocks",
             "weight_value_proposition",
             "weight_personalisation",
             "weight_cta",

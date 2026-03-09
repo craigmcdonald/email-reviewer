@@ -89,9 +89,9 @@ Current application settings.
 | company_domains | string | Comma-separated domains |
 | scoring_batch_size | integer | Claude API concurrency limit |
 | auto_score_after_fetch | boolean | Auto-score after fetch |
-| initial_email_prompt | text | Prompt for individual email scoring |
-| chain_email_prompt | text | Prompt for scoring follow-up emails with chain context |
-| chain_evaluation_prompt | text | Prompt for evaluating conversation chains |
+| initial_email_prompt_blocks | object \| null | Structured prompt blocks for scoring initial cold outreach emails. Keys: `opening`, `value_proposition`, `personalisation`, `cta`, `clarity`, `closing` |
+| chain_email_prompt_blocks | object \| null | Structured prompt blocks for scoring follow-up emails. Same keys as initial |
+| chain_evaluation_prompt_blocks | object \| null | Structured prompt blocks for evaluating conversation chains. Keys: `opening`, `progression`, `responsiveness`, `persistence`, `conversation_quality`, `closing` |
 | weight_value_proposition | float | Weight for value_proposition (default 0.35) |
 | weight_personalisation | float | Weight for personalisation (default 0.30) |
 | weight_cta | float | Weight for cta (default 0.20) |
@@ -106,13 +106,13 @@ Partial update of application settings. Returns the updated settings.
 - `company_domains` cannot be empty
 - `scoring_batch_size` must be >= 1
 - When any weight field is provided, all four must be present and sum to 1.0 (tolerance 0.001)
-- Prompt fields cannot be empty strings
+- When prompt block objects are provided, no block value can be empty or whitespace-only
 
 **Response**: `SettingsResponse`
 
 ### GET /api/settings/defaults
 
-Default prompt texts for `initial_email_prompt`, `chain_email_prompt`, and `chain_evaluation_prompt`. Powers "Reset to Default" buttons in the settings UI.
+Default prompt block objects for `initial_email_prompt_blocks`, `chain_email_prompt_blocks`, and `chain_evaluation_prompt_blocks`.
 
 **Response**: Object with default prompt strings.
 

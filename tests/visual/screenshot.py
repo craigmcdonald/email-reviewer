@@ -25,6 +25,11 @@ os.environ["DATABASE_URL"] = DB_URL
 
 from app.models import Email, Job, Rep, Score, Settings  # noqa: F401
 from app.models.base import Base
+from app.models.settings import (
+    DEFAULT_CHAIN_EMAIL_BLOCKS,
+    DEFAULT_CHAIN_EVAL_BLOCKS,
+    DEFAULT_INITIAL_EMAIL_BLOCKS,
+)
 
 # Seed database
 sync_engine = create_engine(DB_URL)
@@ -38,6 +43,9 @@ with Session(sync_engine) as session:
         company_domains="nativecampusadvertising.com,native.fm",
         scoring_batch_size=5,
         auto_score_after_fetch=True,
+        initial_email_prompt_blocks=DEFAULT_INITIAL_EMAIL_BLOCKS.copy(),
+        chain_email_prompt_blocks=DEFAULT_CHAIN_EMAIL_BLOCKS.copy(),
+        chain_evaluation_prompt_blocks=DEFAULT_CHAIN_EVAL_BLOCKS.copy(),
     ))
     session.commit()
 
@@ -82,7 +90,8 @@ driver = webdriver.Chrome(options=chrome_options)
 
 urls = {
     "team": f"http://127.0.0.1:{PORT}/",
-    "settings": f"http://127.0.0.1:{PORT}/settings",
+    "settings_general": f"http://127.0.0.1:{PORT}/settings?tab=general",
+    "settings_evaluation": f"http://127.0.0.1:{PORT}/settings?tab=evaluation",
 }
 
 for name, url in urls.items():

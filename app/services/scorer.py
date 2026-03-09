@@ -16,34 +16,19 @@ from app.models.chain_score import ChainScore
 from app.models.email import Email
 from app.models.score import Score
 from app.models.settings import (
-    DEFAULT_CHAIN_EMAIL_PROMPT,
-    DEFAULT_CHAIN_EVALUATION_PROMPT,
-    DEFAULT_INITIAL_EMAIL_PROMPT,
+    CHAIN_DIMENSIONS,
+    DEFAULT_CHAIN_EMAIL_BLOCKS,
+    DEFAULT_CHAIN_EVAL_BLOCKS,
+    DEFAULT_INITIAL_EMAIL_BLOCKS,
+    EMAIL_DIMENSIONS,
     Settings,
+    assemble_prompt,
 )
 from app.schemas.chain_score import ChainScoringResult
 from app.schemas.score import ScoringResult
 from app.services.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_INITIAL_PROMPT = """You are an expert sales email evaluator. Score the following outgoing sales email on five dimensions, each from 1 (worst) to 10 (best):
-
-1. **personalisation** - How tailored is the email to the specific recipient? Does it reference their company, role, recent activity, or pain points?
-2. **clarity** - Is the message easy to read and understand? Is it concise with a clear structure?
-3. **value_proposition** - Does the email clearly articulate what value the sender offers to the recipient?
-4. **cta** - Is there a clear, specific call to action? Is it easy for the recipient to take the next step?
-5. **overall** - Holistic quality of the email as a sales outreach message.
-
-Respond with ONLY a JSON object in this exact format, no other text:
-{
-  "personalisation": <1-10>,
-  "clarity": <1-10>,
-  "value_proposition": <1-10>,
-  "cta": <1-10>,
-  "overall": <1-10>,
-  "notes": "<brief 1-2 sentence explanation of the scores>"
-}"""
 
 MAX_BODY_LENGTH = 4000
 MAX_CHAIN_EMAIL_LENGTH = 2000
@@ -204,9 +189,10 @@ async def _score_single_email(
 
     # Choose prompt based on chain position, falling back to defaults
     if email.chain_id is not None and (email.position_in_chain or 0) > 1:
-        system_prompt = settings.chain_email_prompt or DEFAULT_CHAIN_EMAIL_PROMPT
+        blocks = settings.chain_email_prompt_blocks or DEFAULT_CHAIN_EMAIL_BLOCKS
     else:
-        system_prompt = settings.initial_email_prompt or DEFAULT_INITIAL_EMAIL_PROMPT
+        blocks = settings.initial_email_prompt_blocks or DEFAULT_INITIAL_EMAIL_BLOCKS
+    system_prompt = assemble_prompt(blocks, EMAIL_DIMENSIONS)
 
     async with semaphore:
         for _attempt in range(2):
@@ -424,7 +410,7 @@ async def score_unscored_chains(
                 response = await client.messages.create(
                     model="claude-sonnet-4-20250514",
                     max_tokens=300,
-                    system=[{"type": "text", "text": settings.chain_evaluation_prompt or DEFAULT_CHAIN_EVALUATION_PROMPT}],
+                    system=[{"type": "text", "text": assemble_prompt(settings.chain_evaluation_prompt_blocks or DEFAULT_CHAIN_EVAL_BLOCKS, CHAIN_DIMENSIONS)}],
                     messages=[{"role": "user", "content": conversation_text}],
                 )
                 total_tokens["input"] += response.usage.input_tokens

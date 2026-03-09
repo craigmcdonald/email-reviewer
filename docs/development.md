@@ -205,11 +205,10 @@ The service is idempotent — existing chain assignments are cleared and rebuilt
 
 ## Settings UI
 
-The settings page (`/settings`) uses a tabbed layout with three tabs:
+The settings page (`/settings`) uses a tabbed layout with two tabs:
 
-- **General** — `global_start_date`, `company_domains`, `scoring_batch_size`, `auto_score_after_fetch`.
-- **Scoring** — `initial_email_prompt`, `chain_email_prompt`, and score dimension weights (`weight_value_proposition`, `weight_personalisation`, `weight_cta`, `weight_clarity`). Weights must sum to 1.0. "Reset to Default" buttons restore built-in prompts via `GET /api/settings/defaults`.
-- **Chain Evaluation** — `chain_evaluation_prompt` for conversation-level scoring.
+- **General** — `global_start_date`, `company_domains`, `scoring_batch_size`, `auto_score_after_fetch`. Operations panel for fetch, score, rescore, export, and chain-build.
+- **Evaluation** — Structured prompt blocks for three evaluation types (initial email, follow-up email, chain evaluation). Each prompt is split into an opening context block, per-dimension criteria blocks, and a response format block. Includes score dimension weights (`weight_value_proposition`, `weight_personalisation`, `weight_cta`, `weight_clarity`). Weights must sum to 1.0.
 
 All tab content is rendered server-side; JavaScript toggles visibility. The `?tab=` query parameter selects the active tab.
 

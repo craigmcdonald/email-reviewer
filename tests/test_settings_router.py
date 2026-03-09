@@ -116,18 +116,36 @@ class TestPatchWeights:
 
 
 class TestPatchPrompts:
-    async def test_updates_initial_email_prompt(self, client):
+    async def test_updates_initial_email_prompt_blocks(self, client):
+        blocks = {
+            "opening": "Custom opening",
+            "value_proposition": "Custom vp",
+            "personalisation": "Custom pers",
+            "cta": "Custom cta",
+            "clarity": "Custom clarity",
+            "closing": "Custom closing",
+        }
         resp = await client.patch(
             "/api/settings",
-            json={"initial_email_prompt": "New prompt text"},
+            json={"initial_email_prompt_blocks": blocks},
         )
         assert resp.status_code == 200
-        assert resp.json()["initial_email_prompt"] == "New prompt text"
+        data = resp.json()["initial_email_prompt_blocks"]
+        assert data["opening"] == "Custom opening"
+        assert data["closing"] == "Custom closing"
 
-    async def test_rejects_empty_initial_email_prompt(self, client):
+    async def test_rejects_empty_block_value(self, client):
+        blocks = {
+            "opening": "  ",
+            "value_proposition": "vp",
+            "personalisation": "pers",
+            "cta": "cta",
+            "clarity": "clarity",
+            "closing": "closing",
+        }
         resp = await client.patch(
             "/api/settings",
-            json={"initial_email_prompt": ""},
+            json={"initial_email_prompt_blocks": blocks},
         )
         assert resp.status_code == 422
 
@@ -169,25 +187,43 @@ class TestSettingsPage:
         assert resp.status_code == 200
         assert "General" in resp.text
 
-    async def test_contains_scoring_tab(self, client):
+    async def test_contains_evaluation_tab(self, client):
         resp = await client.get("/settings")
         assert resp.status_code == 200
-        assert "Scoring" in resp.text
+        assert "Evaluation" in resp.text
 
-    async def test_contains_chain_evaluation_tab(self, client):
-        resp = await client.get("/settings")
-        assert resp.status_code == 200
-        assert "Chain Evaluation" in resp.text
-
-    async def test_scoring_tab_contains_weight_input(self, client):
-        resp = await client.get("/settings?tab=scoring")
+    async def test_evaluation_tab_contains_weight_input(self, client):
+        resp = await client.get("/settings?tab=evaluation")
         assert resp.status_code == 200
         assert 'name="weight_value_proposition"' in resp.text
 
-    async def test_chain_evaluation_tab_contains_prompt(self, client):
-        resp = await client.get("/settings?tab=chain-evaluation")
-        assert resp.status_code == 200
-        assert "chain_evaluation_prompt" in resp.text
+    async def test_evaluation_tab_contains_block_textareas(self, client):
+        resp = await client.get("/settings?tab=evaluation")
+        html = resp.text
+        assert 'id="initial_opening"' in html
+        assert 'id="initial_value_proposition"' in html
+        assert 'id="chain_email_opening"' in html
+        assert 'id="chain_eval_opening"' in html
+        assert 'id="chain_eval_progression"' in html
+
+    async def test_evaluation_tab_contains_explainer_text(self, client):
+        resp = await client.get("/settings?tab=evaluation")
+        html = resp.text
+        assert "cold outreach" in html.lower()
+        assert "follow-up" in html.lower()
+        assert "back-and-forth" in html.lower()
+
+    async def test_no_reset_to_default_buttons(self, client):
+        resp = await client.get("/settings?tab=evaluation")
+        assert "Reset to Default" not in resp.text
+
+    async def test_no_chain_statistics_section(self, client):
+        resp = await client.get("/settings?tab=evaluation")
+        assert "Chain Statistics" not in resp.text
+
+    async def test_save_evaluation_settings_button(self, client):
+        resp = await client.get("/settings?tab=evaluation")
+        assert "Save Evaluation Settings" in resp.text
 
 
 class TestPatchWeightsValidSums:
@@ -217,39 +253,54 @@ class TestPatchWeightsValidSums:
 
 
 class TestPatchPromptPersistence:
-    async def test_chain_email_prompt_persists(self, client):
-        new_prompt = "Updated chain email prompt for testing"
+    async def test_initial_email_prompt_blocks_persist(self, client):
+        blocks = {
+            "opening": "Updated opening for testing",
+            "value_proposition": "vp text",
+            "personalisation": "pers text",
+            "cta": "cta text",
+            "clarity": "clarity text",
+            "closing": "closing text",
+        }
         resp = await client.patch(
             "/api/settings",
-            json={"chain_email_prompt": new_prompt},
+            json={"initial_email_prompt_blocks": blocks},
         )
         assert resp.status_code == 200
-        assert resp.json()["chain_email_prompt"] == new_prompt
+        assert resp.json()["initial_email_prompt_blocks"]["opening"] == "Updated opening for testing"
 
         get_resp = await client.get("/api/settings")
-        assert get_resp.json()["chain_email_prompt"] == new_prompt
+        assert get_resp.json()["initial_email_prompt_blocks"]["opening"] == "Updated opening for testing"
 
-    async def test_chain_evaluation_prompt_persists(self, client):
-        new_prompt = "Updated chain evaluation prompt for testing"
+    async def test_chain_evaluation_prompt_blocks_persist(self, client):
+        blocks = {
+            "opening": "Updated chain eval opening",
+            "progression": "prog text",
+            "responsiveness": "resp text",
+            "persistence": "pers text",
+            "conversation_quality": "cq text",
+            "closing": "closing text",
+        }
         resp = await client.patch(
             "/api/settings",
-            json={"chain_evaluation_prompt": new_prompt},
+            json={"chain_evaluation_prompt_blocks": blocks},
         )
         assert resp.status_code == 200
-        assert resp.json()["chain_evaluation_prompt"] == new_prompt
+        assert resp.json()["chain_evaluation_prompt_blocks"]["opening"] == "Updated chain eval opening"
 
         get_resp = await client.get("/api/settings")
-        assert get_resp.json()["chain_evaluation_prompt"] == new_prompt
+        assert get_resp.json()["chain_evaluation_prompt_blocks"]["opening"] == "Updated chain eval opening"
 
 
 class TestSettingsDefaults:
-    async def test_returns_default_prompts(self, client):
+    async def test_returns_default_prompt_blocks(self, client):
         resp = await client.get("/api/settings/defaults")
         assert resp.status_code == 200
         data = resp.json()
-        assert "initial_email_prompt" in data
-        assert "chain_email_prompt" in data
-        assert "chain_evaluation_prompt" in data
-        assert len(data["initial_email_prompt"]) > 0
-        assert len(data["chain_email_prompt"]) > 0
-        assert len(data["chain_evaluation_prompt"]) > 0
+        assert "initial_email_prompt_blocks" in data
+        assert "chain_email_prompt_blocks" in data
+        assert "chain_evaluation_prompt_blocks" in data
+        assert "opening" in data["initial_email_prompt_blocks"]
+        assert "closing" in data["initial_email_prompt_blocks"]
+        assert "value_proposition" in data["initial_email_prompt_blocks"]
+        assert "progression" in data["chain_evaluation_prompt_blocks"]
