@@ -238,9 +238,11 @@ async def score_unscored_emails(
 
     Processes emails in batches of ``batch_size``, committing each batch
     to the database before moving on so that completed work survives
-    crashes. Returns a summary dict with counts and total tokens used.
+    crashes. Each batch queries its own fresh ORM objects to avoid
+    stale-state issues after commit. Returns a summary dict with counts
+    and total tokens used.
     """
-    # Find emails without a score via LEFT JOIN
+    # Phase 1: identify which emails need scoring — collect plain IDs
     stmt = (
         select(Email)
         .outerjoin(Score, Email.id == Score.email_id)
@@ -263,16 +265,14 @@ async def score_unscored_emails(
         "total_output_tokens": 0,
     }
 
-    to_score_with_claude = []
+    ids_to_score = []
 
     for email in unscored:
-        # Skip emails from reps with no rep_type
         rep_type = rep_type_map.get(email.from_email)
         if rep_type is None:
             summary["skipped_untyped"] += 1
             continue
 
-        # Skip emails from non-sales reps
         if rep_type == RepType.NON_SALES.value:
             summary["skipped_non_sales"] += 1
             continue
@@ -283,10 +283,9 @@ async def score_unscored_emails(
         if not body.strip() or word_count < MIN_WORD_COUNT:
             summary["skipped"] += 1
         else:
-            email._rep_type = rep_type
-            to_score_with_claude.append(email)
+            ids_to_score.append((email.id, rep_type))
 
-    if to_score_with_claude:
+    if ids_to_score:
         client = AsyncAnthropic()
         settings = await get_settings(session)
 
@@ -301,25 +300,32 @@ async def score_unscored_emails(
             "weight_clarity": settings.weight_clarity,
         }
 
-        for i in range(0, len(to_score_with_claude), batch_size):
-            batch = to_score_with_claude[i : i + batch_size]
+        # Phase 2: process in batches, each with fresh ORM objects
+        for i in range(0, len(ids_to_score), batch_size):
+            batch_items = ids_to_score[i : i + batch_size]
+            batch_ids = [item[0] for item in batch_items]
+            batch_rep_types = {item[0]: item[1] for item in batch_items}
             try:
+                emails = (await session.execute(
+                    select(Email).where(Email.id.in_(batch_ids))
+                )).scalars().all()
+
                 semaphore = asyncio.Semaphore(batch_size)
 
-                # Pre-build chain context for follow-up emails in this batch
-                for email in batch:
+                for email in emails:
                     email._chain_context = await _build_chain_context(session, email)
+                    email._rep_type = batch_rep_types[email.id]
 
                 tasks = [
                     _score_single_email(
                         client, email, semaphore, settings,
-                        rep_type=getattr(email, "_rep_type", None),
+                        rep_type=email._rep_type,
                     )
-                    for email in batch
+                    for email in emails
                 ]
                 results = await asyncio.gather(*tasks)
 
-                for email, scoring_result in zip(batch, results):
+                for email, scoring_result in zip(emails, results):
                     if scoring_result is not None:
                         tokens = getattr(scoring_result, "_tokens", {})
                         dimension_scores = {
@@ -399,8 +405,10 @@ async def score_unscored_chains(
 
     Processes chains in batches of ``batch_size``, committing each batch
     to the database before moving on so that completed work survives
-    crashes. Returns a summary dict.
+    crashes. Each batch queries its own fresh ORM objects. Returns a
+    summary dict.
     """
+    # Phase 1: identify chain IDs to score
     stmt = (
         select(EmailChain)
         .outerjoin(ChainScore, EmailChain.id == ChainScore.chain_id)
@@ -431,24 +439,24 @@ async def score_unscored_chains(
         summary["error_message"] = "Chain evaluation prompt blocks not configured in settings"
         return summary
 
-    # Filter chains before batching
-    to_score = []
+    chain_ids_to_score = []
     for chain in unscored_chains:
         if chain.is_unanswered:
             summary["skipped_unanswered"] += 1
             continue
-        to_score.append(chain)
+        chain_ids_to_score.append(chain.id)
 
     client = AsyncAnthropic()
 
-    for i in range(0, len(to_score), batch_size):
-        batch = to_score[i : i + batch_size]
+    # Phase 2: process in batches, each with fresh ORM objects
+    for i in range(0, len(chain_ids_to_score), batch_size):
+        batch_ids = chain_ids_to_score[i : i + batch_size]
         try:
-            for chain in batch:
-                # Fetch all emails in this chain
+            for chain_id in batch_ids:
+                # Fetch all emails in this chain (fresh query)
                 email_stmt = (
                     select(Email)
-                    .where(Email.chain_id == chain.id)
+                    .where(Email.chain_id == chain_id)
                     .order_by(Email.position_in_chain)
                 )
                 email_result = await session.execute(email_stmt)
@@ -523,7 +531,7 @@ async def score_unscored_chains(
 
                 if scoring_result is not None:
                     chain_score = ChainScore(
-                        chain_id=chain.id,
+                        chain_id=chain_id,
                         progression=scoring_result.progression,
                         responsiveness=scoring_result.responsiveness,
                         persistence=scoring_result.persistence,
@@ -537,7 +545,7 @@ async def score_unscored_chains(
                     summary["chains_scored"] += 1
                 else:
                     chain_score = ChainScore(
-                        chain_id=chain.id,
+                        chain_id=chain_id,
                         score_error=True,
                         scored_at=datetime.utcnow(),
                     )
