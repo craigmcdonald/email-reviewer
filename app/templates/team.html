@@ -2,6 +2,17 @@
 {% block title %}Team - Email Reviewer{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-6">Team</h1>
+<div class="mb-4 flex items-center gap-3">
+    <label for="rep-type-filter" class="text-sm font-medium text-gray-700">Filter by type:</label>
+    <select id="rep-type-filter" onchange="filterByType(this.value)" class="text-sm border border-gray-300 rounded-md px-3 py-1.5 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        <option value="" {{ 'selected' if not rep_type_filter }}>All</option>
+        <option value="SDR" {{ 'selected' if rep_type_filter == 'SDR' }}>SDR</option>
+        <option value="BizDev" {{ 'selected' if rep_type_filter == 'BizDev' }}>BizDev</option>
+        <option value="AM" {{ 'selected' if rep_type_filter == 'AM' }}>AM</option>
+        <option value="Non-Sales" {{ 'selected' if rep_type_filter == 'Non-Sales' }}>Non-Sales</option>
+        <option value="Unassigned" {{ 'selected' if rep_type_filter == 'Unassigned' }}>Unassigned</option>
+    </select>
+</div>
 <div class="bg-white rounded-lg shadow overflow-x-auto">
     <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
@@ -24,18 +35,32 @@
                     <a href="/reps/{{ row.email }}" class="text-blue-600 hover:underline">{{ row.display_name }}</a>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                    {% if row.rep_type %}
-                        <span class="text-sm">{{ row.rep_type }}</span>
-                    {% else %}
-                        <span class="unassigned-rep inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Unassigned</span>
-                    {% endif %}
-                    <select class="rep-type-select ml-1 text-xs border rounded px-1 py-0.5" data-rep-email="{{ row.email }}" onchange="setRepType(this)">
-                        <option value="">--</option>
-                        <option value="SDR" {{ 'selected' if row.rep_type == 'SDR' }}>SDR</option>
-                        <option value="BizDev" {{ 'selected' if row.rep_type == 'BizDev' }}>BizDev</option>
-                        <option value="AM" {{ 'selected' if row.rep_type == 'AM' }}>AM</option>
-                        <option value="Non-Sales" {{ 'selected' if row.rep_type == 'Non-Sales' }}>Non-Sales</option>
-                    </select>
+                    <div class="rep-type-cell" data-rep-email="{{ row.email }}">
+                        {% if row.rep_type %}
+                        <span class="rep-type-display inline-flex items-center gap-1.5">
+                            <span class="text-sm font-medium text-gray-900">{{ row.rep_type }}</span>
+                            <button type="button" class="rep-type-edit-btn text-gray-400 hover:text-blue-600 transition-colors" onclick="showTypeEditor(this)" title="Change type">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                            </button>
+                        </span>
+                        <select class="rep-type-select hidden text-sm border border-gray-300 rounded-md px-2 py-1 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" data-rep-email="{{ row.email }}" onchange="setRepType(this)" onblur="hideTypeEditor(this)">
+                            <option value="">-- Cancel --</option>
+                            <option value="SDR" {{ 'selected' if row.rep_type == 'SDR' }}>SDR</option>
+                            <option value="BizDev" {{ 'selected' if row.rep_type == 'BizDev' }}>BizDev</option>
+                            <option value="AM" {{ 'selected' if row.rep_type == 'AM' }}>AM</option>
+                            <option value="Non-Sales" {{ 'selected' if row.rep_type == 'Non-Sales' }}>Non-Sales</option>
+                        </select>
+                        {% else %}
+                        <span class="rep-type-display hidden"></span>
+                        <select class="rep-type-select text-sm border border-gray-300 rounded-md px-2 py-1 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" data-rep-email="{{ row.email }}" onchange="setRepType(this)">
+                            <option value="" selected>Unassigned</option>
+                            <option value="SDR">SDR</option>
+                            <option value="BizDev">BizDev</option>
+                            <option value="AM">AM</option>
+                            <option value="Non-Sales">Non-Sales</option>
+                        </select>
+                        {% endif %}
+                    </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_overall) }}">{{ "%.1f"|format(row.avg_overall) if row.avg_overall is not none else "—" }}</span></td>
                 <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_personalisation) }}">{{ "%.1f"|format(row.avg_personalisation) if row.avg_personalisation is not none else "—" }}</span></td>
@@ -47,7 +72,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="9" class="px-6 py-4 text-center text-gray-500">No scored reps yet.</td>
+                <td colspan="9" class="px-6 py-4 text-center text-gray-500">No reps found.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -55,10 +80,44 @@
 </div>
 {% include "_pagination.html" %}
 <script>
+function filterByType(value) {
+    const params = new URLSearchParams(window.location.search);
+    if (value) {
+        params.set('rep_type', value);
+    } else {
+        params.delete('rep_type');
+    }
+    params.set('page', '1');
+    window.location.search = params.toString();
+}
+
+function showTypeEditor(btn) {
+    const cell = btn.closest('.rep-type-cell');
+    cell.querySelector('.rep-type-display').classList.add('hidden');
+    const select = cell.querySelector('.rep-type-select');
+    select.classList.remove('hidden');
+    select.focus();
+}
+
+function hideTypeEditor(selectEl) {
+    // Delay to allow onchange to fire before hiding
+    setTimeout(function() {
+        const cell = selectEl.closest('.rep-type-cell');
+        const display = cell.querySelector('.rep-type-display');
+        if (display.textContent.trim()) {
+            selectEl.classList.add('hidden');
+            display.classList.remove('hidden');
+        }
+    }, 150);
+}
+
 async function setRepType(selectEl) {
     const email = selectEl.dataset.repEmail;
     const value = selectEl.value;
-    if (!value) return;
+    if (!value) {
+        hideTypeEditor(selectEl);
+        return;
+    }
     const resp = await fetch(`/api/reps/${encodeURIComponent(email)}`, {
         method: 'PATCH',
         headers: {'Content-Type': 'application/json'},

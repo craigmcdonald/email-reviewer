@@ -48,8 +48,11 @@ with Session(sync_engine) as session:
         chain_evaluation_prompt_blocks=SETTINGS_SEED["chain_evaluation_prompt_blocks"].copy(),
     ))
 
-    # Rep
+    # Reps with different types
     session.add(Rep(email=REP_EMAIL, display_name="Zachary Bell", rep_type="SDR"))
+    session.add(Rep(email="bethan@native.fm", display_name="Bethan Telfer", rep_type="AM"))
+    session.add(Rep(email="katy@native.fm", display_name="Katy Smale", rep_type="BizDev"))
+    session.add(Rep(email="new@native.fm", display_name="New Starter"))  # Unassigned
     session.flush()
 
     # --- 1. Outreach: standalone emails (no chain_id) ---
@@ -96,6 +99,52 @@ with Session(sync_engine) as session:
     session.add(Score(
         email_id=e3.id, personalisation=4, clarity=6, value_proposition=7, cta=5, overall=5,
         notes="Competitive angle works but feels generic.",
+    ))
+
+    # Extra rep emails for team page variety
+    eb1 = Email(
+        from_email="bethan@native.fm", to_email="client@acme.com",
+        from_name="Bethan Telfer", to_name="Client",
+        subject="Renewal discussion",
+        body_text="Hi, let's discuss your renewal options for next quarter.",
+        direction="EMAIL", hubspot_id="bt-1",
+        timestamp=datetime(2026, 3, 1, 10, 0),
+    )
+    session.add(eb1)
+    session.flush()
+    session.add(Score(
+        email_id=eb1.id, personalisation=8, clarity=9, value_proposition=8, cta=7, overall=8,
+        notes="Excellent account management email.",
+    ))
+
+    ek1 = Email(
+        from_email="katy@native.fm", to_email="lead@startup.io",
+        from_name="Katy Smale", to_name="Lead",
+        subject="Partnership opportunity",
+        body_text="Hi, I'd love to explore a partnership with your team.",
+        direction="EMAIL", hubspot_id="ks-1",
+        timestamp=datetime(2026, 3, 1, 11, 0),
+    )
+    session.add(ek1)
+    session.flush()
+    session.add(Score(
+        email_id=ek1.id, personalisation=7, clarity=8, value_proposition=7, cta=6, overall=7,
+        notes="Good BizDev outreach with clear value.",
+    ))
+
+    en1 = Email(
+        from_email="new@native.fm", to_email="someone@company.com",
+        from_name="New Starter", to_name="Someone",
+        subject="Quick intro",
+        body_text="Hi, I'm new to the team and wanted to introduce myself.",
+        direction="EMAIL", hubspot_id="ns-1",
+        timestamp=datetime(2026, 3, 1, 12, 0),
+    )
+    session.add(en1)
+    session.flush()
+    session.add(Score(
+        email_id=en1.id, personalisation=3, clarity=5, value_proposition=4, cta=3, overall=4,
+        notes="Generic intro with weak CTA.",
     ))
 
     # --- 2. Follow-up sequence: same rep, same prospect, same subject ---
@@ -289,6 +338,8 @@ driver = webdriver.Chrome(options=chrome_options)
 
 urls = {
     "team": f"http://127.0.0.1:{PORT}/",
+    "team_filtered_sdr": f"http://127.0.0.1:{PORT}/?rep_type=SDR",
+    "team_filtered_unassigned": f"http://127.0.0.1:{PORT}/?rep_type=Unassigned",
     "rep_detail": f"http://127.0.0.1:{PORT}/reps/{REP_EMAIL}",
     "settings_general": f"http://127.0.0.1:{PORT}/settings?tab=general",
     "settings_evaluation": f"http://127.0.0.1:{PORT}/settings?tab=evaluation",

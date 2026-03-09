@@ -38,7 +38,7 @@ class TestTeamPage:
         resp = await client.get("/")
         assert resp.status_code == 200
         assert "Unassigned" in resp.text
-        assert "unassigned-rep" in resp.text
+        assert "rep-type-select" in resp.text
 
     async def test_team_page_shows_rep_type(
         self, client, make_rep, make_email, make_score
@@ -50,6 +50,79 @@ class TestTeamPage:
         resp = await client.get("/")
         assert resp.status_code == 200
         assert "SDR" in resp.text
+
+    async def test_team_page_type_dropdown_hidden_when_assigned(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="typed@example.com", display_name="Typed Rep", rep_type="BizDev")
+        em = await make_email(from_email="typed@example.com", subject="Test")
+        await make_score(email_id=em.id, overall=7)
+
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        # Dropdown should be hidden by default; only edit icon shown
+        assert "rep-type-edit-btn" in resp.text
+        assert 'class="rep-type-select' not in resp.text or "hidden" in resp.text
+
+    async def test_team_page_type_dropdown_shown_when_unassigned(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="untyped@example.com", display_name="Untyped Rep")
+        em = await make_email(from_email="untyped@example.com", subject="Test")
+        await make_score(email_id=em.id, overall=7)
+
+        resp = await client.get("/")
+        assert resp.status_code == 200
+        # Dropdown should be visible for unassigned reps
+        assert "rep-type-select" in resp.text
+
+    async def test_team_page_filter_by_rep_type(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="sdr@example.com", display_name="SDR Rep", rep_type="SDR")
+        em1 = await make_email(from_email="sdr@example.com", subject="Test SDR")
+        await make_score(email_id=em1.id, overall=7)
+
+        await make_rep(email="am@example.com", display_name="AM Rep", rep_type="AM")
+        em2 = await make_email(from_email="am@example.com", subject="Test AM")
+        await make_score(email_id=em2.id, overall=6)
+
+        resp = await client.get("/", params={"rep_type": "SDR"})
+        assert resp.status_code == 200
+        assert "SDR Rep" in resp.text
+        assert "AM Rep" not in resp.text
+
+    async def test_team_page_filter_by_rep_type_empty_shows_all(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="sdr@example.com", display_name="SDR Rep", rep_type="SDR")
+        em1 = await make_email(from_email="sdr@example.com", subject="Test SDR")
+        await make_score(email_id=em1.id, overall=7)
+
+        await make_rep(email="am@example.com", display_name="AM Rep", rep_type="AM")
+        em2 = await make_email(from_email="am@example.com", subject="Test AM")
+        await make_score(email_id=em2.id, overall=6)
+
+        resp = await client.get("/", params={"rep_type": ""})
+        assert resp.status_code == 200
+        assert "SDR Rep" in resp.text
+        assert "AM Rep" in resp.text
+
+    async def test_team_page_filter_unassigned(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="sdr@example.com", display_name="SDR Rep", rep_type="SDR")
+        em1 = await make_email(from_email="sdr@example.com", subject="Test SDR")
+        await make_score(email_id=em1.id, overall=7)
+
+        await make_rep(email="new@example.com", display_name="New Rep")
+        em2 = await make_email(from_email="new@example.com", subject="Test New")
+        await make_score(email_id=em2.id, overall=6)
+
+        resp = await client.get("/", params={"rep_type": "Unassigned"})
+        assert resp.status_code == 200
+        assert "New Rep" in resp.text
+        assert "SDR Rep" not in resp.text
 
 
 class TestRepDetailPage:
