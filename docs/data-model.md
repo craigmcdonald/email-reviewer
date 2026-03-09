@@ -99,9 +99,9 @@ Single-row application configuration. Seeded on first migration.
 | company_domains | String | | Comma-separated domains for outgoing email filtering |
 | scoring_batch_size | Integer | | Concurrency limit for Claude API calls. Default 5 |
 | auto_score_after_fetch | Boolean | | When true, fetch also scores unscored emails. Default true |
-| initial_email_prompt | Text | | Configurable prompt for individual email scoring. Defaults to four-dimension scoring prompt (personalisation, clarity, value_proposition, cta) |
-| chain_email_prompt | Text | | Prompt for scoring emails within a conversation chain context |
-| chain_evaluation_prompt | Text | | Prompt for evaluating conversation chains (progression, responsiveness, persistence, conversation_quality) |
+| initial_email_prompt_blocks | JSONB | Nullable | Structured prompt blocks for scoring initial cold outreach emails. Keys: `opening`, `value_proposition`, `personalisation`, `cta`, `clarity`, `closing` |
+| chain_email_prompt_blocks | JSONB | Nullable | Structured prompt blocks for scoring follow-up emails within a conversation chain. Same keys as initial_email_prompt_blocks |
+| chain_evaluation_prompt_blocks | JSONB | Nullable | Structured prompt blocks for evaluating conversation chains. Keys: `opening`, `progression`, `responsiveness`, `persistence`, `conversation_quality`, `closing` |
 | weight_value_proposition | Float | | Weight for value_proposition in overall score calculation. Default 0.35 |
 | weight_personalisation | Float | | Weight for personalisation in overall score calculation. Default 0.30 |
 | weight_cta | Float | | Weight for cta in overall score calculation. Default 0.20 |

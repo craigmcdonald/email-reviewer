@@ -11,11 +11,29 @@ WEIGHT_FIELDS = [
     "weight_clarity",
 ]
 
-PROMPT_FIELDS = [
-    "initial_email_prompt",
-    "chain_email_prompt",
-    "chain_evaluation_prompt",
+PROMPT_BLOCK_FIELDS = [
+    "initial_email_prompt_blocks",
+    "chain_email_prompt_blocks",
+    "chain_evaluation_prompt_blocks",
 ]
+
+
+class EmailPromptBlocks(AppBase):
+    opening: str
+    value_proposition: str
+    personalisation: str
+    cta: str
+    clarity: str
+    closing: str
+
+
+class ChainPromptBlocks(AppBase):
+    opening: str
+    progression: str
+    responsiveness: str
+    persistence: str
+    conversation_quality: str
+    closing: str
 
 
 class SettingsResponse(AppBase):
@@ -24,9 +42,9 @@ class SettingsResponse(AppBase):
     company_domains: str
     scoring_batch_size: int
     auto_score_after_fetch: bool
-    initial_email_prompt: str | None = None
-    chain_email_prompt: str | None = None
-    chain_evaluation_prompt: str | None = None
+    initial_email_prompt_blocks: EmailPromptBlocks | None = None
+    chain_email_prompt_blocks: EmailPromptBlocks | None = None
+    chain_evaluation_prompt_blocks: ChainPromptBlocks | None = None
     weight_value_proposition: float = 0.35
     weight_personalisation: float = 0.30
     weight_cta: float = 0.20
@@ -38,9 +56,9 @@ class SettingsUpdate(AppBase):
     company_domains: str | None = None
     scoring_batch_size: int | None = None
     auto_score_after_fetch: bool | None = None
-    initial_email_prompt: str | None = None
-    chain_email_prompt: str | None = None
-    chain_evaluation_prompt: str | None = None
+    initial_email_prompt_blocks: EmailPromptBlocks | None = None
+    chain_email_prompt_blocks: EmailPromptBlocks | None = None
+    chain_evaluation_prompt_blocks: ChainPromptBlocks | None = None
     weight_value_proposition: float | None = None
     weight_personalisation: float | None = None
     weight_cta: float | None = None
@@ -67,11 +85,14 @@ class SettingsUpdate(AppBase):
             raise ValueError("scoring_batch_size must be >= 1")
         return v
 
-    @field_validator(*PROMPT_FIELDS)
+    @field_validator(*PROMPT_BLOCK_FIELDS)
     @classmethod
-    def prompt_not_empty(cls, v: str | None) -> str | None:
-        if v is not None and not v.strip():
-            raise ValueError("Prompt cannot be empty")
+    def prompt_blocks_not_empty(cls, v):
+        if v is None:
+            return v
+        for field_name, field_value in v.model_dump().items():
+            if isinstance(field_value, str) and not field_value.strip():
+                raise ValueError(f"Prompt block '{field_name}' cannot be empty")
         return v
 
     @model_validator(mode="after")

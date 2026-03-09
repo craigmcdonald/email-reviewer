@@ -49,10 +49,17 @@ pipenv run python -m scripts.db_reset          # prompts for confirmation
 pipenv run python -m scripts.db_reset --yes    # skip confirmation
 ```
 
-**Seed** populates the database with sample reps, emails, and scores. Idempotent - skips records that already exist:
+**Seed** populates the database with settings (prompt blocks and scoring weights), reps, emails, and scores. Idempotent - updates settings to canonical values and skips records that already exist:
 
 ```bash
 pipenv run python -m scripts.seed_all
+```
+
+Use `--only` to run a subset of seeds:
+
+```bash
+pipenv run python -m scripts.seed_all --only settings        # prompts and weights only
+pipenv run python -m scripts.seed_all --only settings reps   # settings and reps only
 ```
 
 To start fresh with seed data:
@@ -61,10 +68,17 @@ To start fresh with seed data:
 pipenv run python -m scripts.db_reset --yes && pipenv run python -m scripts.seed_all
 ```
 
+To reset the database and seed only prompts and weights (no sample data):
+
+```bash
+pipenv run python -m scripts.db_reset --yes && pipenv run python -m scripts.seed_all --only settings
+```
+
 Seed data files live in `scripts/seeds/`:
 
 | File | Contents |
 |------|----------|
+| `settings.py` | Evaluation prompt blocks and scoring weights for the settings row |
 | `reps.py` | Sales rep email addresses and display names |
 | `emails.py` | Sample outgoing sales emails (derived from HubSpot fixtures) |
 | `scores.py` | Sample Claude API scoring results for the seed emails |
@@ -205,11 +219,10 @@ The service is idempotent — existing chain assignments are cleared and rebuilt
 
 ## Settings UI
 
-The settings page (`/settings`) uses a tabbed layout with three tabs:
+The settings page (`/settings`) uses a tabbed layout with two tabs:
 
-- **General** — `global_start_date`, `company_domains`, `scoring_batch_size`, `auto_score_after_fetch`.
-- **Scoring** — `initial_email_prompt`, `chain_email_prompt`, and score dimension weights (`weight_value_proposition`, `weight_personalisation`, `weight_cta`, `weight_clarity`). Weights must sum to 1.0. "Reset to Default" buttons restore built-in prompts via `GET /api/settings/defaults`.
-- **Chain Evaluation** — `chain_evaluation_prompt` for conversation-level scoring.
+- **General** — `global_start_date`, `company_domains`, `scoring_batch_size`, `auto_score_after_fetch`. Operations panel for fetch, score, rescore, export, and chain-build.
+- **Evaluation** — Structured prompt blocks for three evaluation types (initial email, follow-up email, chain evaluation). Each prompt is split into an opening context block, per-dimension criteria blocks, and a response format block. Includes score dimension weights (`weight_value_proposition`, `weight_personalisation`, `weight_cta`, `weight_clarity`). Weights must sum to 1.0.
 
 All tab content is rendered server-side; JavaScript toggles visibility. The `?tab=` query parameter selects the active tab.
 
@@ -285,6 +298,7 @@ email-reviewer/
 │   ├── db_reset.py           # Drop all tables and re-apply migrations
 │   ├── seed_all.py           # Populate database with seed data
 │   └── seeds/                # Seed data definitions
+│       ├── settings.py       # Prompt blocks and scoring weights
 │       ├── reps.py           # Rep seed data
 │       ├── emails.py         # Email seed data
 │       └── scores.py         # Score seed data

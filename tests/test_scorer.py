@@ -9,6 +9,11 @@ from sqlalchemy import select
 from app.models.chain_score import ChainScore
 from app.models.email import Email
 from app.models.score import Score
+from app.models.settings import (
+    EMAIL_DIMENSIONS,
+    assemble_prompt,
+)
+from scripts.seeds.settings import SETTINGS_SEED
 from app.services.scorer import (
     _build_chain_context,
     _build_user_message,
@@ -119,9 +124,45 @@ class TestCalculateWeightedOverall:
         assert result == 1
 
 
+class TestAssemblePrompt:
+    def test_assembles_opening_dimensions_closing(self):
+        blocks = {
+            "opening": "You are an evaluator.",
+            "value_proposition": "**vp** — Does it offer value?",
+            "personalisation": "**pers** — Is it tailored?",
+            "cta": "**cta** — Clear action?",
+            "clarity": "**clarity** — Easy to read?",
+            "closing": "Return JSON.",
+        }
+        result = assemble_prompt(blocks, EMAIL_DIMENSIONS)
+        assert result.startswith("You are an evaluator.")
+        assert "1. **vp** — Does it offer value?" in result
+        assert "2. **pers** — Is it tailored?" in result
+        assert "3. **cta** — Clear action?" in result
+        assert "4. **clarity** — Easy to read?" in result
+        assert result.endswith("Return JSON.")
+
+    def test_seed_blocks_produce_valid_prompt(self):
+        result = assemble_prompt(SETTINGS_SEED["initial_email_prompt_blocks"], EMAIL_DIMENSIONS)
+        assert "sales email evaluator" in result
+        assert "value_proposition" in result
+        assert "personalisation" in result
+        assert "cta" in result
+        assert "clarity" in result
+        assert "JSON" in result
+
+
 class TestPromptLoading:
-    async def test_uses_initial_prompt_for_email_without_chain(self, db, make_email, make_settings):
-        settings = await make_settings(initial_email_prompt="Custom initial prompt")
+    async def test_uses_initial_prompt_blocks_for_email_without_chain(self, db, make_email, make_settings):
+        custom_blocks = {
+            "opening": "Custom opening context",
+            "value_proposition": "Custom vp",
+            "personalisation": "Custom pers",
+            "cta": "Custom cta",
+            "clarity": "Custom clarity",
+            "closing": "Custom closing",
+        }
+        settings = await make_settings(initial_email_prompt_blocks=custom_blocks)
         email = await make_email(
             from_email="rep@example.com",
             body_text="This is a sufficiently long body text for scoring purposes to pass the minimum word count",
@@ -137,12 +178,22 @@ class TestPromptLoading:
         await _score_single_email(mock_client, email, semaphore, settings)
 
         call_kwargs = mock_client.messages.create.call_args
-        assert call_kwargs.kwargs["system"] == [{"type": "text", "text": "Custom initial prompt"}]
+        system_text = call_kwargs.kwargs["system"][0]["text"]
+        assert "Custom opening context" in system_text
+        assert "Custom vp" in system_text
+        assert "Custom closing" in system_text
 
-    async def test_uses_chain_prompt_for_followup_email(self, db, make_email, make_chain, make_settings):
-        settings = await make_settings(chain_email_prompt="Custom chain prompt")
+    async def test_uses_chain_prompt_blocks_for_followup_email(self, db, make_email, make_chain, make_settings):
+        custom_blocks = {
+            "opening": "Chain opening context",
+            "value_proposition": "Chain vp",
+            "personalisation": "Chain pers",
+            "cta": "Chain cta",
+            "clarity": "Chain clarity",
+            "closing": "Chain closing",
+        }
+        settings = await make_settings(chain_email_prompt_blocks=custom_blocks)
         chain = await make_chain()
-        # Position 1 email in the chain
         await make_email(
             from_email="rep@example.com",
             body_text="First email body text with enough words to pass the minimum word count check",
@@ -151,7 +202,6 @@ class TestPromptLoading:
             subject="Test Subject",
             timestamp=datetime(2026, 3, 1),
         )
-        # The email being scored is at position 3
         email = await make_email(
             from_email="rep@example.com",
             body_text="Follow up email body text with enough words to pass the minimum word count check",
@@ -171,7 +221,9 @@ class TestPromptLoading:
         await _score_single_email(mock_client, email, semaphore, settings)
 
         call_kwargs = mock_client.messages.create.call_args
-        assert call_kwargs.kwargs["system"] == [{"type": "text", "text": "Custom chain prompt"}]
+        system_text = call_kwargs.kwargs["system"][0]["text"]
+        assert "Chain opening context" in system_text
+        assert "Chain closing" in system_text
 
 
 class TestBuildUserMessage:
@@ -611,8 +663,16 @@ class TestScoreUnscoredChains:
         # 24h between email 1 and 2, 36h between email 2 and 3 -> avg 30h
         assert chain_score.avg_response_hours == 30.0
 
-    async def test_loads_chain_evaluation_prompt_from_settings(self, db, make_chain, make_email, make_settings):
-        settings = await make_settings(chain_evaluation_prompt="Custom chain eval prompt")
+    async def test_loads_chain_evaluation_prompt_blocks_from_settings(self, db, make_chain, make_email, make_settings):
+        custom_blocks = {
+            "opening": "Custom chain eval opening",
+            "progression": "Custom prog",
+            "responsiveness": "Custom resp",
+            "persistence": "Custom pers",
+            "conversation_quality": "Custom cq",
+            "closing": "Custom eval closing",
+        }
+        settings = await make_settings(chain_evaluation_prompt_blocks=custom_blocks)
         chain = await make_chain(email_count=2, outgoing_count=2)
         await make_email(
             from_email="rep@example.com", chain_id=chain.id,
@@ -638,7 +698,9 @@ class TestScoreUnscoredChains:
             result = await score_unscored_chains(db)
 
         call_kwargs = mock_client_instance.messages.create.call_args
-        assert call_kwargs.kwargs["system"] == [{"type": "text", "text": "Custom chain eval prompt"}]
+        system_text = call_kwargs.kwargs["system"][0]["text"]
+        assert "Custom chain eval opening" in system_text
+        assert "Custom eval closing" in system_text
 
     async def test_sets_score_error_after_two_parse_failures(self, db, make_chain, make_email, make_settings):
         settings = await make_settings()

@@ -10,6 +10,7 @@ from app.database import get_db
 from app.main import app
 from app.models import ChainScore, Email, EmailChain, Job, Rep, Score, Settings  # noqa: F401 — registers tables
 from app.models.base import Base
+from scripts.seeds.settings import SETTINGS_SEED
 from tests.fixtures.hubspot import make_hubspot_email, make_hubspot_response
 
 
@@ -41,9 +42,9 @@ TestingSessionLocal = async_sessionmaker(
 async def _setup_db():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Seed default settings row so every test has settings available
+    # Seed settings row with prompt blocks and weights so every test has valid config
     async with TestingSessionLocal() as session:
-        settings_row = Settings(id=1)
+        settings_row = Settings(id=1, **SETTINGS_SEED)
         session.add(settings_row)
         await session.commit()
     yield
