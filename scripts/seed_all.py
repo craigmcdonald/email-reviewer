@@ -1,12 +1,16 @@
 """Populate the database with seed data.
 
-Inserts reps, emails, and scores in dependency order. Idempotent - skips
-records that already exist (matched by primary key or hubspot_id).
+Seeds settings (prompt blocks and scoring weights), reps, emails, and scores
+in dependency order. Idempotent - updates settings to canonical values and
+skips records that already exist (matched by primary key or hubspot_id).
 
 Usage:
-    python -m scripts.seed_all
+    python -m scripts.seed_all                        # all seeds
+    python -m scripts.seed_all --only settings        # settings only
+    python -m scripts.seed_all --only settings reps   # settings and reps only
 """
 
+import argparse
 import asyncio
 import re
 import sys
@@ -94,24 +98,40 @@ async def _seed_scores(session: AsyncSession):
     print(f"  scores: {inserted} inserted, {len(SCORES) - inserted} already present")
 
 
-async def _run():
+ALL_SEEDS = ["settings", "reps", "emails", "scores"]
+
+
+async def _run(only: set[str]):
     engine = _build_engine()
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
         async with session.begin():
             print("Seeding database...")
-            await _seed_settings(session)
-            await _seed_reps(session)
-            await _seed_emails(session)
-            await _seed_scores(session)
+            if "settings" in only:
+                await _seed_settings(session)
+            if "reps" in only:
+                await _seed_reps(session)
+            if "emails" in only:
+                await _seed_emails(session)
+            if "scores" in only:
+                await _seed_scores(session)
             print("Done.")
 
     await engine.dispose()
 
 
 def main():
-    asyncio.run(_run())
+    parser = argparse.ArgumentParser(description="Populate the database with seed data.")
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        choices=ALL_SEEDS,
+        help="Run only the specified seeds (default: all).",
+    )
+    args = parser.parse_args()
+    only = set(args.only) if args.only else set(ALL_SEEDS)
+    asyncio.run(_run(only))
 
 
 if __name__ == "__main__":

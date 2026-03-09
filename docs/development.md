@@ -55,10 +55,23 @@ pipenv run python -m scripts.db_reset --yes    # skip confirmation
 pipenv run python -m scripts.seed_all
 ```
 
+Use `--only` to run a subset of seeds:
+
+```bash
+pipenv run python -m scripts.seed_all --only settings        # prompts and weights only
+pipenv run python -m scripts.seed_all --only settings reps   # settings and reps only
+```
+
 To start fresh with seed data:
 
 ```bash
 pipenv run python -m scripts.db_reset --yes && pipenv run python -m scripts.seed_all
+```
+
+To reset the database and seed only prompts and weights (no sample data):
+
+```bash
+pipenv run python -m scripts.db_reset --yes && pipenv run python -m scripts.seed_all --only settings
 ```
 
 Seed data files live in `scripts/seeds/`:
