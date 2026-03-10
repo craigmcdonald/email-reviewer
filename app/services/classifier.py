@@ -149,55 +149,55 @@ async def classify_emails(
     system_prompt = assemble_prompt(
         settings.classifier_prompt_blocks, CLASSIFIER_DIMENSIONS
     )
-    client = AsyncAnthropic()
-    semaphore = asyncio.Semaphore(batch_size)
+    async with AsyncAnthropic() as client:
+        semaphore = asyncio.Semaphore(batch_size)
 
-    for i in range(0, len(remaining_ids), batch_size):
-        batch_ids = remaining_ids[i : i + batch_size]
-        try:
-            emails = (await session.execute(
-                select(Email).where(Email.id.in_(batch_ids))
-            )).scalars().all()
+        for i in range(0, len(remaining_ids), batch_size):
+            batch_ids = remaining_ids[i : i + batch_size]
+            try:
+                emails = (await session.execute(
+                    select(Email).where(Email.id.in_(batch_ids))
+                )).scalars().all()
 
-            tasks = []
-            for email in emails:
-                body = email.body_text or ""
-                if len(body) > MAX_BODY_LENGTH:
-                    body = body[:MAX_BODY_LENGTH]
-                user_msg = f"Subject: {email.subject or ''}\nBody:\n{body}"
-                tasks.append(
-                    _call_haiku_with_retry(client, user_msg, system_prompt, semaphore)
-                )
+                tasks = []
+                for email in emails:
+                    body = email.body_text or ""
+                    if len(body) > MAX_BODY_LENGTH:
+                        body = body[:MAX_BODY_LENGTH]
+                    user_msg = f"Subject: {email.subject or ''}\nBody:\n{body}"
+                    tasks.append(
+                        _call_haiku_with_retry(client, user_msg, system_prompt, semaphore)
+                    )
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            for email, api_result in zip(emails, results):
-                if isinstance(api_result, Exception):
-                    summary["errors"] += 1
-                    continue
+                for email, api_result in zip(emails, results):
+                    if isinstance(api_result, Exception):
+                        summary["errors"] += 1
+                        continue
 
-                if api_result is None:
-                    summary["errors"] += 1
-                    continue
+                    if api_result is None:
+                        summary["errors"] += 1
+                        continue
 
-                email_type = api_result.get("email_type", "real_email")
-                quoted = api_result.get("quoted_emails", [])
+                    email_type = api_result.get("email_type", "real_email")
+                    quoted = api_result.get("quoted_emails", [])
 
-                if email_type != "real_email":
-                    email.is_auto_reply = True
-                    summary["auto_replies_found"] += 1
+                    if email_type != "real_email":
+                        email.is_auto_reply = True
+                        summary["auto_replies_found"] += 1
 
-                # Always set quoted_metadata to mark as processed
-                email.quoted_metadata = quoted if quoted else []
-                if quoted:
-                    summary["chains_extracted"] += 1
+                    # Always set quoted_metadata to mark as processed
+                    email.quoted_metadata = quoted if quoted else []
+                    if quoted:
+                        summary["chains_extracted"] += 1
 
-                summary["classified"] += 1
+                    summary["classified"] += 1
 
-            await session.commit()
-        except Exception:
-            logger.exception("Haiku classification batch %d failed", i // batch_size)
-            await session.rollback()
-            summary["batch_errors"] += 1
+                await session.commit()
+            except Exception:
+                logger.exception("Haiku classification batch %d failed", i // batch_size)
+                await session.rollback()
+                summary["batch_errors"] += 1
 
     return summary
