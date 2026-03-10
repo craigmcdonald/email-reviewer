@@ -20,8 +20,17 @@ def _static_url(filename: str) -> str:
 
 
 def _strip_signature(text: str) -> str:
-    """Remove email signature block starting at a common delimiter line."""
-    return re.split(r"\n-- ?\n", text, maxsplit=1)[0]
+    """Remove email signature block.
+
+    Matches the standard ``-- `` delimiter, common "Kind regards" / "Best"
+    style sign-offs, and explicit "Sent from" lines.
+    """
+    result = re.split(
+        r"\n-- ?\n"
+        r"|\n(?:Kind regards|Best regards|Best wishes|Regards|Thanks|Cheers|Many thanks),?\s*\n",
+        text, maxsplit=1, flags=re.IGNORECASE,
+    )
+    return result[0]
 
 
 templates.env.globals["static_url"] = _static_url

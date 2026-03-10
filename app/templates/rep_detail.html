@@ -85,37 +85,14 @@
         </thead>
         <tbody class="divide-y divide-gray-200">
             {% for email in items %}
-            <tr>
+            <tr class="email-row cursor-pointer hover:bg-gray-50" onclick="toggleEmailExpand(this)">
                 <td class="px-6 py-4">
-                    <details>
-                        <summary class="cursor-pointer text-blue-600 hover:underline">{{ email.subject or "(no subject)" }}</summary>
-                        <div class="mt-3 space-y-3" style="min-width:600px">
-                            {% if email.score and email.score.notes %}
-                            <div class="border-l-4 border-blue-500 bg-blue-50 rounded-r-lg pl-4 pr-4 py-3 flex gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                                </svg>
-                                <p class="text-sm text-gray-700">{{ email.score.notes }}</p>
-                            </div>
-                            {% endif %}
-                            <p class="text-sm text-gray-500">
-                                From: {{ email.from_name or email.from_email }}
-                                &nbsp;&nbsp;To: {{ email.to_name or email.to_email or "—" }}
-                            </p>
-                            <div class="border border-gray-200 rounded-lg p-4 overflow-y-auto" style="max-height:200px">
-                                <pre class="text-sm text-gray-700 whitespace-pre-wrap">{{ (email.body_text or "") | strip_signature }}</pre>
-                            </div>
-                            <button type="button" onclick="openEmailModal(this)" class="text-sm text-gray-500 hover:text-blue-600 hover:underline"
-                                    data-subject="{{ email.subject or '(no subject)' }}"
-                                    data-from="{{ email.from_name or email.from_email }}"
-                                    data-to="{{ email.to_name or email.to_email or '' }}"
-                                    data-date="{{ email.timestamp.strftime('%Y-%m-%d') if email.timestamp else '' }}"
-                                    data-body="{{ email.body_text or '' }}"
-                                    data-notes="{{ email.score.notes if email.score and email.score.notes else '' }}">
-                                View full email with signature
-                            </button>
-                        </div>
-                    </details>
+                    <span class="inline-flex items-center gap-1">
+                        <svg class="email-chevron h-4 w-4 text-gray-400 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <span class="text-blue-600">{{ email.subject or "(no subject)" }}</span>
+                    </span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ email.timestamp.strftime("%Y-%m-%d") if email.timestamp else "—" }}</td>
                 {% if email.score %}
@@ -127,6 +104,36 @@
                 {% else %}
                 <td colspan="5" class="px-6 py-4 text-gray-400">Not scored</td>
                 {% endif %}
+            </tr>
+            <tr class="email-expand hidden" style="border-top:none">
+                <td colspan="7" class="px-6 pb-6 pt-0">
+                    <div class="space-y-3">
+                        {% if email.score and email.score.notes %}
+                        <div class="border-l-4 border-blue-500 bg-blue-50 rounded-r-lg pl-4 pr-4 py-3 flex gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                            </svg>
+                            <p class="text-sm text-gray-700">{{ email.score.notes }}</p>
+                        </div>
+                        {% endif %}
+                        <p class="text-sm text-gray-500">
+                            From: {{ email.from_name or email.from_email }}
+                            &nbsp;&nbsp;To: {{ email.to_name or email.to_email or "—" }}
+                        </p>
+                        <div class="border border-gray-200 rounded-lg p-4 overflow-y-auto" style="max-height:200px">
+                            <pre class="text-sm text-gray-700 whitespace-pre-wrap">{{ (email.body_text or "") | strip_signature }}</pre>
+                        </div>
+                        <button type="button" onclick="event.stopPropagation(); openEmailModal(this)" class="text-sm text-gray-500 hover:text-blue-600 hover:underline"
+                                data-subject="{{ email.subject or '(no subject)' }}"
+                                data-from="{{ email.from_name or email.from_email }}"
+                                data-to="{{ email.to_name or email.to_email or '' }}"
+                                data-date="{{ email.timestamp.strftime('%Y-%m-%d') if email.timestamp else '' }}"
+                                data-body="{{ email.body_text or '' }}"
+                                data-notes="{{ email.score.notes if email.score and email.score.notes else '' }}">
+                            View full email with signature
+                        </button>
+                    </div>
+                </td>
             </tr>
             {% else %}
             <tr>
@@ -257,6 +264,17 @@ document.querySelectorAll('form[id$="-filter-form"]').forEach(function(form) {
         }
     });
 });
+
+// Toggle email expand row
+function toggleEmailExpand(row) {
+    var expandRow = row.nextElementSibling;
+    if (!expandRow || !expandRow.classList.contains('email-expand')) return;
+    var chevron = row.querySelector('.email-chevron');
+    expandRow.classList.toggle('hidden');
+    if (chevron) {
+        chevron.style.transform = expandRow.classList.contains('hidden') ? '' : 'rotate(90deg)';
+    }
+}
 
 // Email detail modal
 function openEmailModal(btn) {
