@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ chain.normalized_subject or "Chain" }} - Email Reviewer{% endblock %}
+{% block title %}{{ chain.normalized_subject or "Conversation" }} - Email Reviewer{% endblock %}
 {% block content %}
 <div class="mb-6">
     <a href="javascript:history.back()" class="text-sm text-blue-600 hover:underline">&larr; Back</a>
@@ -9,7 +9,7 @@
 
 {% if chain.chain_score %}
 <div class="bg-white rounded-lg shadow p-6 mb-6">
-    <h2 class="text-lg font-semibold mb-4">Chain Score</h2>
+    <h2 class="text-lg font-semibold mb-4">Conversation Score</h2>
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div>
             <div class="text-xs text-gray-500 uppercase">Quality</div>

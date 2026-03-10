@@ -178,10 +178,10 @@ try:
     print("  Screenshot: /tmp/e2e_01_settings_initial.png")
 
     # ============================
-    # STEP 2: Click "Rebuild Chains"
+    # STEP 2: Click "Rebuild Conversations"
     # ============================
-    print("\nSTEP 2: Click Rebuild Chains button")
-    rebuild_btn = driver.find_element(By.XPATH, "//button[contains(text(),'Rebuild Chains')]")
+    print("\nSTEP 2: Click Rebuild Conversations button")
+    rebuild_btn = driver.find_element(By.XPATH, "//button[contains(text(),'Rebuild Conversations')]")
     rebuild_btn.click()
     print("  Clicked Rebuild Chains")
     time.sleep(1)
