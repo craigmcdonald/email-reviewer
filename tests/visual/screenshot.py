@@ -60,7 +60,7 @@ with Session(sync_engine) as session:
         from_email=REP_EMAIL, to_email=PROSPECT_EMAIL,
         from_name="Zachary Bell", to_name="Nicholas Chang",
         subject="Native & HoYoverse - 2026 Student Opportunities",
-        body_text="Hi Nicholas,\n\nI wanted to reach out about campus marketing opportunities for HoYoverse in 2026.",
+        body_text="Hi Nicholas,\n\nI wanted to reach out about campus marketing opportunities for HoYoverse in 2026.\n\nWe currently work with gaming and entertainment brands across 80+ UK universities, helping them reach students through digital screens, sampling events, and branded activations.\n\nGiven Genshin Impact's popularity with the student demographic, I think there's a great opportunity to run targeted campaigns during Freshers' Week and throughout the academic year.\n\nI'd love to set up a quick call to walk you through what we offer and share some case studies from similar campaigns.\n\nBest regards,\nZachary Bell\nBusiness Development Manager\nNative Campus Advertising\nzacharybell@native.fm\n+44 7700 900123",
         direction="EMAIL", hubspot_id="out-1",
         timestamp=datetime(2026, 3, 2, 9, 0),
     )
@@ -75,7 +75,7 @@ with Session(sync_engine) as session:
         from_email=REP_EMAIL, to_email="pharmacie@pharmacie.coffee",
         from_name="Zachary Bell", to_name="Pharmacie Coffee",
         subject="Campus coffee partnership - Native",
-        body_text="Hi there,\n\nI'd love to discuss a campus coffee partnership with Pharmacie.",
+        body_text="Hi there,\n\nI'd love to discuss a campus coffee partnership with Pharmacie. We work with over 50 universities across the UK and have helped brands like yours connect with students through sampling, digital screens, and event sponsorship.\n\nWould you be open to a quick call next week to explore this?\n\nKind regards,\nZachary Bell\nBusiness Development Manager\nNative Campus Advertising\n+44 7700 900123",
         direction="EMAIL", hubspot_id="out-2",
         timestamp=datetime(2026, 3, 3, 10, 0),
     )
@@ -353,6 +353,28 @@ for name, url in urls.items():
     time.sleep(0.5)
     driver.save_screenshot(f"/tmp/{name}.png")
     print(f"Saved /tmp/{name}.png")
+
+# Expanded email row + modal screenshots
+driver.get(f"http://127.0.0.1:{PORT}/reps/{REP_EMAIL}")
+time.sleep(1)
+
+# Click first email row to expand
+driver.execute_script("document.querySelector('.email-row').click()")
+time.sleep(0.5)
+total_height = driver.execute_script("return document.body.scrollHeight")
+driver.set_window_size(1440, max(900, total_height + 200))
+time.sleep(0.5)
+driver.save_screenshot("/tmp/rep_detail_expanded.png")
+print("Saved /tmp/rep_detail_expanded.png")
+
+# Click "View full email with signature" to open modal
+driver.execute_script("""
+    var btn = document.querySelector('.email-expand:not(.hidden) button[onclick*="openEmailModal"]');
+    if (btn) btn.click();
+""")
+time.sleep(0.5)
+driver.save_screenshot("/tmp/rep_detail_modal.png")
+print("Saved /tmp/rep_detail_modal.png")
 
 driver.quit()
 
