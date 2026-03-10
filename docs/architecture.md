@@ -382,7 +382,7 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 
 ## Job Runner
 
-`app/services/job_runner.py` executes operations as background tasks or RQ worker jobs. Each runner accepts an optional `session` parameter — when `None` (worker process), a new `AsyncSession` is created from `AsyncSessionLocal`. Each runner follows the same pattern: set RUNNING with `started_at`, execute, set COMPLETED/FAILED with `completed_at` and `result_summary`/`error_message`. All wrapped in try/except.
+`app/services/job_runner.py` executes operations as background tasks or RQ worker jobs. Each runner accepts an optional `session` parameter — when `None` (worker process), a new `AsyncSession` is created from ``worker_session()``. Each runner follows the same pattern: set RUNNING with `started_at`, execute, set COMPLETED/FAILED with `completed_at` and `result_summary`/`error_message`. All wrapped in try/except.
 
 `app/tasks.py` provides synchronous wrapper functions (`fetch_task`, `score_task`, `rescore_task`, `export_task`) for RQ. Each calls `asyncio.run()` on the corresponding async runner with `session=None`, so the runner creates its own session.
 
@@ -406,7 +406,7 @@ No FULL_RUN job type. A FETCH job can handle both fetch and score phases. The `a
 
 **Heroku deployment** - No Docker. The app runs on Heroku with a web dyno (`uvicorn`) and an optional worker dyno (`rq worker`). DATABASE_URL comes from Heroku's PostgreSQL addon. REDIS_URL comes from a Redis addon (e.g. Heroku Data for Redis).
 
-**Worker dyno and Redis queue** - When `REDIS_URL` is configured, operations are enqueued to an RQ (Redis Queue) job queue named `email-reviewer`. A separate worker dyno dequeues and runs jobs in their own process, freeing the web dyno from long-running tasks. The worker creates its own async database session via `AsyncSessionLocal`.
+**Worker dyno and Redis queue** - When `REDIS_URL` is configured, operations are enqueued to an RQ (Redis Queue) job queue named `email-reviewer`. A separate worker dyno dequeues and runs jobs in their own process, freeing the web dyno from long-running tasks. The worker creates its own async database session via ``worker_session()``.
 
 **Fallback to BackgroundTasks** - When `REDIS_URL` is empty (local dev, or production without Redis), the operations router falls back to FastAPI `BackgroundTasks`. The same async job runner functions are called in-process. This means the app works without Redis - adding Redis is purely additive.
 

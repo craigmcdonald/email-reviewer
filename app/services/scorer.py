@@ -47,6 +47,21 @@ MAX_RATE_LIMIT_RETRIES = 5
 DEFAULT_RETRY_AFTER = 60
 
 
+def _format_email_header(email) -> str:
+    """Format From/To/Date/Subject header block for an email."""
+    from_parts = [email.from_name, email.from_email]
+    from_str = " ".join(p for p in from_parts if p)
+    to_parts = [email.to_name, email.to_email]
+    to_str = " ".join(p for p in to_parts if p)
+    date_str = str(email.timestamp) if email.timestamp else ""
+    return (
+        f"From: {from_str}\n"
+        f"To: {to_str}\n"
+        f"Date: {date_str}\n"
+        f"Subject: {email.subject or ''}"
+    )
+
+
 def _calculate_weighted_overall(scores: dict, weights: dict) -> int:
     """Compute weighted sum of the 4 dimensions. Round to nearest int, clamp 1-10."""
     weighted = (
@@ -66,14 +81,6 @@ def _build_user_message(ctx: EmailScoringContext) -> str:
     if len(body) > MAX_BODY_LENGTH:
         body = body[:MAX_BODY_LENGTH]
 
-    date_str = str(email.timestamp) if email.timestamp else ""
-
-    from_parts = [email.from_name, email.from_email]
-    from_str = " ".join(p for p in from_parts if p)
-
-    to_parts = [email.to_name, email.to_email]
-    to_str = " ".join(p for p in to_parts if p)
-
     parts = []
 
     # Include rep role context when available
@@ -88,13 +95,7 @@ def _build_user_message(ctx: EmailScoringContext) -> str:
     if ctx.follow_up_context:
         parts.append(f"Previous emails in sequence:\n{ctx.follow_up_context}\n")
 
-    parts.append(
-        f"From: {from_str}\n"
-        f"To: {to_str}\n"
-        f"Subject: {email.subject or ''}\n"
-        f"Date: {date_str}\n"
-        f"Body:\n{body}"
-    )
+    parts.append(f"{_format_email_header(email)}\nBody:\n{body}")
 
     return "\n".join(parts)
 
@@ -126,19 +127,7 @@ async def _build_chain_context(session: AsyncSession, email: Email) -> str:
         if len(body) > MAX_CHAIN_EMAIL_LENGTH:
             body = body[:MAX_CHAIN_EMAIL_LENGTH]
 
-        from_parts = [prior.from_name, prior.from_email]
-        from_str = " ".join(p for p in from_parts if p)
-        to_parts = [prior.to_name, prior.to_email]
-        to_str = " ".join(p for p in to_parts if p)
-        date_str = str(prior.timestamp) if prior.timestamp else ""
-
-        sections.append(
-            f"From: {from_str}\n"
-            f"To: {to_str}\n"
-            f"Date: {date_str}\n"
-            f"Subject: {prior.subject or ''}\n"
-            f"Body: {body}"
-        )
+        sections.append(f"{_format_email_header(prior)}\nBody: {body}")
 
     return "\n---\n".join(sections)
 
@@ -188,19 +177,7 @@ async def _build_follow_up_context(session: AsyncSession, email: Email) -> str:
         if len(body) > MAX_CHAIN_EMAIL_LENGTH:
             body = body[:MAX_CHAIN_EMAIL_LENGTH]
 
-        from_parts = [p.from_name, p.from_email]
-        from_str = " ".join(p_part for p_part in from_parts if p_part)
-        to_parts = [p.to_name, p.to_email]
-        to_str = " ".join(p_part for p_part in to_parts if p_part)
-        date_str = str(p.timestamp) if p.timestamp else ""
-
-        sections.append(
-            f"From: {from_str}\n"
-            f"To: {to_str}\n"
-            f"Date: {date_str}\n"
-            f"Subject: {p.subject or ''}\n"
-            f"Body: {body}"
-        )
+        sections.append(f"{_format_email_header(p)}\nBody: {body}")
 
     return "\n---\n".join(sections)
 
@@ -264,7 +241,7 @@ async def _score_single_email(
 
     # Choose prompt based on email type
     if ctx.is_follow_up:
-        blocks = settings.follow_up_email_prompt_blocks or settings.initial_email_prompt_blocks
+        blocks = settings.follow_up_email_prompt_blocks
     elif email.chain_id is not None and (email.position_in_chain or 0) > 1:
         blocks = settings.chain_email_prompt_blocks
     else:
@@ -368,7 +345,13 @@ async def score_unscored_emails(
         settings = await get_settings(session)
 
         if not settings.initial_email_prompt_blocks:
-            summary["error_message"] = "Prompt blocks not configured in settings"
+            summary["error_message"] = "Initial email prompt blocks not configured in settings"
+            return summary
+        if not settings.chain_email_prompt_blocks:
+            summary["error_message"] = "Chain email prompt blocks not configured in settings"
+            return summary
+        if not settings.follow_up_email_prompt_blocks:
+            summary["error_message"] = "Follow-up email prompt blocks not configured in settings"
             return summary
 
         weights = {
@@ -412,9 +395,14 @@ async def score_unscored_emails(
                     _score_single_email(client, ctx, semaphore, settings)
                     for ctx in contexts
                 ]
-                results = await asyncio.gather(*tasks)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
                 for ctx, scoring_result in zip(contexts, results):
+                    if isinstance(scoring_result, BaseException):
+                        logger.error(
+                            "Email %d scoring raised: %s", ctx.email.id, scoring_result,
+                        )
+                        scoring_result = None
                     email = ctx.email
                     if scoring_result is not None:
                         dimension_scores = {
@@ -529,13 +517,17 @@ async def score_unscored_chains(
     chain_ids_to_score = [chain.id for chain in unscored_chains]
 
     client = AsyncAnthropic()
+    system_prompt = assemble_prompt(settings.chain_evaluation_prompt_blocks, CHAIN_DIMENSIONS)
 
-    # Phase 2: process in batches, each with fresh ORM objects
+    # Phase 2: process in batches concurrently, each with fresh ORM objects
     for i in range(0, len(chain_ids_to_score), batch_size):
         batch_ids = chain_ids_to_score[i : i + batch_size]
         try:
+            # Prepare chain data for each chain in the batch
+            chain_tasks = []
+            chain_meta = []  # parallel list of (chain_id, avg_hours) or None for skipped
+
             for chain_id in batch_ids:
-                # Fetch all emails in this chain (fresh query)
                 email_stmt = (
                     select(Email)
                     .where(Email.chain_id == chain_id)
@@ -544,7 +536,6 @@ async def score_unscored_chains(
                 email_result = await session.execute(email_stmt)
                 chain_emails = email_result.scalars().all()
 
-                # Determine rep from outgoing emails
                 rep_type = None
                 for email in chain_emails:
                     if email.direction == "EMAIL":
@@ -552,64 +543,40 @@ async def score_unscored_chains(
                         if rep_type is not None:
                             break
 
-                # Skip chains where the rep has no type
                 if rep_type is None:
                     summary["skipped_untyped"] += 1
                     continue
 
-                # Skip chains where the rep is non-sales
                 if rep_type == RepType.NON_SALES.value:
                     summary["skipped_non_sales"] += 1
                     continue
 
-                # Build conversation context
                 sections = []
                 for email in chain_emails:
                     body = email.body_text or ""
                     if len(body) > MAX_CHAIN_EMAIL_LENGTH:
                         body = body[:MAX_CHAIN_EMAIL_LENGTH]
-
-                    from_parts = [email.from_name, email.from_email]
-                    from_str = " ".join(p for p in from_parts if p)
-                    to_parts = [email.to_name, email.to_email]
-                    to_str = " ".join(p for p in to_parts if p)
-                    date_str = str(email.timestamp) if email.timestamp else ""
-
-                    sections.append(
-                        f"From: {from_str}\n"
-                        f"To: {to_str}\n"
-                        f"Date: {date_str}\n"
-                        f"Subject: {email.subject or ''}\n"
-                        f"Body: {body}"
-                    )
+                    sections.append(f"{_format_email_header(email)}\nBody: {body}")
 
                 conversation_text = f"Rep role: {rep_type}\n\n" + "\n---\n".join(sections)
-
                 avg_hours = _compute_avg_response_hours(chain_emails)
 
-                # Call Claude with chain evaluation prompt
-                scoring_result = None
-                total_tokens = {"input": 0, "output": 0}
+                chain_tasks.append(
+                    _score_single_chain(client, conversation_text, system_prompt)
+                )
+                chain_meta.append((chain_id, avg_hours))
 
-                for _attempt in range(2):
-                    try:
-                        response = await client.messages.create(
-                            model="claude-sonnet-4-20250514",
-                            max_tokens=300,
-                            system=[{"type": "text", "text": assemble_prompt(settings.chain_evaluation_prompt_blocks, CHAIN_DIMENSIONS)}],
-                            messages=[{"role": "user", "content": conversation_text}],
-                        )
-                        total_tokens["input"] += response.usage.input_tokens
-                        total_tokens["output"] += response.usage.output_tokens
-                    except RateLimitError:
-                        break
+            if not chain_tasks:
+                continue
 
-                    try:
-                        raw = json.loads(response.content[0].text)
-                        scoring_result = ChainScoringResult(**raw)
-                        break
-                    except (json.JSONDecodeError, ValueError, KeyError):
-                        continue
+            results = await asyncio.gather(*chain_tasks, return_exceptions=True)
+
+            for (chain_id, avg_hours), result in zip(chain_meta, results):
+                if isinstance(result, BaseException):
+                    logger.error("Chain %d scoring raised: %s", chain_id, result)
+                    scoring_result, total_tokens = None, {"input": 0, "output": 0}
+                else:
+                    scoring_result, total_tokens = result
 
                 if scoring_result is not None:
                     chain_score = ChainScore(
@@ -644,3 +611,32 @@ async def score_unscored_chains(
             summary["batch_errors"] += 1
 
     return summary
+
+
+async def _score_single_chain(
+    client: AsyncAnthropic, conversation_text: str, system_prompt: str
+) -> tuple[ChainScoringResult | None, dict]:
+    """Score a single chain with retry on rate limit and parse failure.
+
+    Returns (ChainScoringResult | None, token_totals).
+    """
+    total_tokens = {"input": 0, "output": 0}
+
+    for _attempt in range(2):
+        try:
+            response, attempt_tokens = await _call_claude_with_retry(
+                client, conversation_text, system_prompt
+            )
+            total_tokens["input"] += attempt_tokens["input"]
+            total_tokens["output"] += attempt_tokens["output"]
+        except RateLimitError:
+            return None, total_tokens
+
+        try:
+            raw = json.loads(response.content[0].text)
+            scoring_result = ChainScoringResult(**raw)
+            return scoring_result, total_tokens
+        except (json.JSONDecodeError, ValueError, KeyError):
+            continue
+
+    return None, total_tokens

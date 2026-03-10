@@ -1,21 +1,9 @@
-import math
-
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.models import Email, EmailChain, ChainScore
-
-
-def _paginate_result(items, total: int, page: int, per_page: int):
-    pages = math.ceil(total / per_page) if per_page else 1
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "per_page": per_page,
-        "pages": pages,
-    }
+from app.services.pagination import paginate_result as _paginate_result
 
 
 async def get_chain_detail(session: AsyncSession, chain_id: int) -> dict | None:

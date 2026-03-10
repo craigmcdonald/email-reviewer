@@ -17,7 +17,7 @@ class Email(AuditMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     timestamp: Mapped[Optional[datetime]] = mapped_column(default=None)
     from_name: Mapped[Optional[str]] = mapped_column(String, default=None)
-    from_email: Mapped[str] = mapped_column(String, nullable=False)
+    from_email: Mapped[str] = mapped_column(String, nullable=False, index=True)
     to_name: Mapped[Optional[str]] = mapped_column(String, default=None)
     to_email: Mapped[Optional[str]] = mapped_column(String, default=None)
     subject: Mapped[Optional[str]] = mapped_column(String, default=None)
@@ -27,7 +27,7 @@ class Email(AuditMixin, Base):
     fetched_at: Mapped[Optional[datetime]] = mapped_column(default=None)
 
     chain_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("email_chains.id"), default=None
+        ForeignKey("email_chains.id"), default=None, index=True
     )
     position_in_chain: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     open_count: Mapped[Optional[int]] = mapped_column(Integer, default=None)

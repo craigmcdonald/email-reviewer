@@ -205,7 +205,7 @@ async def run_score_job(
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_running(job)
-            await s.flush()
+            await s.commit()
 
             settings = await get_settings(s)
             score_result = await score_unscored_emails(
@@ -217,6 +217,8 @@ async def run_score_job(
                 "tokens": score_result.get("total_input_tokens", 0)
                 + score_result.get("total_output_tokens", 0),
             }
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
             _set_completed(job, summary)
             await s.flush()
 
@@ -232,7 +234,7 @@ async def run_rescore_job(
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_running(job)
-            await s.flush()
+            await s.commit()
 
             # Delete all existing scores and chain scores
             await s.execute(delete(ChainScore))
@@ -251,6 +253,8 @@ async def run_rescore_job(
                 "chains_scored": score_result.get("chains_scored", 0),
                 "chain_errors": score_result.get("chain_errors", 0),
             }
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
             _set_completed(job, summary)
             await s.flush()
 
@@ -268,9 +272,11 @@ async def run_export_job(
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_running(job)
-            await s.flush()
+            await s.commit()
 
             path = await export_to_excel(s, output_path)
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
             _set_completed(job, {"output_path": path})
             await s.flush()
 
@@ -286,9 +292,11 @@ async def run_chain_build_job(
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_running(job)
-            await s.flush()
+            await s.commit()
 
             chain_result = await build_chains(s)
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
             _set_completed(job, chain_result)
             await s.flush()
 
