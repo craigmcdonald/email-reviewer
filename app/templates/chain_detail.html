@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ chain.normalized_subject or "Chain" }} - Email Reviewer{% endblock %}
+{% block title %}{{ chain.normalized_subject or "Conversation" }} - Email Reviewer{% endblock %}
 {% block content %}
 <div class="mb-6">
     <a href="javascript:history.back()" class="text-sm text-blue-600 hover:underline">&larr; Back</a>
@@ -9,7 +9,7 @@
 
 {% if chain.chain_score %}
 <div class="bg-white rounded-lg shadow p-6 mb-6">
-    <h2 class="text-lg font-semibold mb-4">Chain Score</h2>
+    <h2 class="text-lg font-semibold mb-4">Conversation Score</h2>
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div>
             <div class="text-xs text-gray-500 uppercase">Quality</div>
@@ -33,37 +33,163 @@
         </div>
     </div>
     {% if chain.chain_score.notes %}
-    <p class="mt-4 text-sm text-gray-600 italic">{{ chain.chain_score.notes }}</p>
+    <div class="ai-notes mt-4">
+        <svg class="ai-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        <p>{{ chain.chain_score.notes }}</p>
+    </div>
     {% endif %}
 </div>
 {% endif %}
 
 <h2 class="text-lg font-semibold mb-4">Conversation Thread</h2>
-<div class="space-y-4">
-    {% for email in chain.emails %}
-    <div class="bg-white rounded-lg shadow p-4 border-l-4 {{ 'border-blue-500' if email.direction == 'EMAIL' else 'border-green-500' }}">
-        <div class="flex justify-between items-start mb-2">
-            <div>
-                <span class="text-xs font-medium px-2 py-0.5 rounded {{ 'bg-blue-100 text-blue-800' if email.direction == 'EMAIL' else 'bg-green-100 text-green-800' }}">
-                    {{ "Outgoing" if email.direction == "EMAIL" else "Incoming" }}
-                </span>
-                <span class="ml-2 text-sm font-medium">{{ email.from_name or email.from_email }}</span>
-                <span class="text-sm text-gray-500"> &rarr; {{ email.to_name or email.to_email or "" }}</span>
-            </div>
-            <span class="text-xs text-gray-500">{{ email.timestamp.strftime("%Y-%m-%d %H:%M") if email.timestamp else "" }}</span>
-        </div>
-        <div class="text-sm text-gray-600 mb-2">{{ email.subject or "(no subject)" }}</div>
-        <pre class="text-sm text-gray-700 whitespace-pre-wrap max-w-3xl">{{ (email.body_text or "")[:500] }}</pre>
-        {% if email.score %}
-        <div class="mt-3 flex gap-4 text-xs">
-            <span>Overall: <span class="{{ score_class(email.score.overall) }}">{{ email.score.overall }}</span></span>
-            <span>Personalisation: <span class="{{ score_class(email.score.personalisation) }}">{{ email.score.personalisation }}</span></span>
-            <span>Clarity: <span class="{{ score_class(email.score.clarity) }}">{{ email.score.clarity }}</span></span>
-            <span>Value Prop: <span class="{{ score_class(email.score.value_proposition) }}">{{ email.score.value_proposition }}</span></span>
-            <span>CTA: <span class="{{ score_class(email.score.cta) }}">{{ email.score.cta }}</span></span>
-        </div>
-        {% endif %}
-    </div>
-    {% endfor %}
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Direction</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Overall</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Personalisation</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Clarity</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value Prop</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">CTA</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+            {% for email in chain.emails %}
+            <tr class="email-row cursor-pointer" onclick="toggleRow(this)">
+                <td class="px-6 py-4">
+                    <div class="subject-cell">
+                        <svg class="chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        <span class="subject-text">{{ email.subject or "(no subject)" }}</span>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="text-xs font-medium px-2 py-0.5 rounded {{ 'bg-blue-100 text-blue-800' if email.direction == 'EMAIL' else 'bg-green-100 text-green-800' }}">
+                        {{ "Outgoing" if email.direction == "EMAIL" else "Incoming" }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ email.timestamp.strftime("%Y-%m-%d %H:%M") if email.timestamp else "—" }}</td>
+                {% if email.score %}
+                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.overall) }}">{{ email.score.overall }}</span></td>
+                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.personalisation) }}">{{ email.score.personalisation }}</span></td>
+                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.clarity) }}">{{ email.score.clarity }}</span></td>
+                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.value_proposition) }}">{{ email.score.value_proposition }}</span></td>
+                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.cta) }}">{{ email.score.cta }}</span></td>
+                {% else %}
+                <td colspan="5" class="px-6 py-4 text-gray-400">—</td>
+                {% endif %}
+            </tr>
+            <tr>
+                <td class="detail-cell" colspan="8">
+                    <div class="detail-panel">
+                        <div class="detail-inner">
+                            {% if email.score and email.score.notes %}
+                            <div class="ai-notes">
+                                <svg class="ai-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                                <p>{{ email.score.notes }}</p>
+                            </div>
+                            {% endif %}
+                            <div class="email-meta">
+                                <span>From: {{ email.from_name or email.from_email }}</span>
+                                <span>To: {{ email.to_name or email.to_email or "—" }}</span>
+                            </div>
+                            <div class="email-body-scroll">
+                                <pre class="email-body-text">{{ (email.body_text or "") | strip_signature }}</pre>
+                            </div>
+                            <a class="full-email-link" onclick="event.stopPropagation(); openEmailModal(this)"
+                               data-subject="{{ email.subject or '(no subject)' }}"
+                               data-from="{{ email.from_name or email.from_email }}"
+                               data-to="{{ email.to_name or email.to_email or '' }}"
+                               data-date="{{ email.timestamp.strftime('%Y-%m-%d %H:%M') if email.timestamp else '' }}"
+                               data-body="{{ email.body_text or '' }}"
+                               data-notes="{{ email.score.notes if email.score and email.score.notes else '' }}">View full email with signature</a>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
+
+<!-- Email detail modal -->
+<div id="email-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[85vh] flex flex-col mx-4">
+        <div class="flex items-start justify-between p-6 pb-4 border-b border-gray-100">
+            <h2 id="email-modal-subject" class="text-lg font-semibold pr-4"></h2>
+            <button onclick="closeEmailModal()" class="text-gray-400 hover:text-gray-600 flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="p-6 pt-4 overflow-y-auto space-y-4">
+            <div id="email-modal-notes-wrapper" class="border-l-4 border-blue-500 bg-blue-50 rounded-r-lg pl-4 pr-4 py-3 flex gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <p id="email-modal-notes" class="text-sm text-gray-700"></p>
+            </div>
+            <p class="text-sm text-gray-500">
+                <span>From: <span id="email-modal-from"></span></span>
+                <span class="ml-4">To: <span id="email-modal-to"></span></span>
+                <span id="email-modal-date" class="ml-4"></span>
+            </p>
+            <pre id="email-modal-body" class="text-sm text-gray-700 whitespace-pre-wrap"></pre>
+        </div>
+    </div>
+</div>
+
+<script>
+// Accordion: one row open at a time
+var openEmailRow = null;
+function toggleRow(row) {
+    var panel = row.nextElementSibling && row.nextElementSibling.querySelector('.detail-panel');
+    if (!panel) return;
+    if (openEmailRow && openEmailRow !== row) {
+        openEmailRow.classList.remove('expanded');
+        var oldPanel = openEmailRow.nextElementSibling && openEmailRow.nextElementSibling.querySelector('.detail-panel');
+        if (oldPanel) oldPanel.classList.remove('open');
+    }
+    if (openEmailRow === row) {
+        row.classList.remove('expanded');
+        panel.classList.remove('open');
+        openEmailRow = null;
+    } else {
+        row.classList.add('expanded');
+        panel.classList.add('open');
+        openEmailRow = row;
+    }
+}
+
+function openEmailModal(btn) {
+    document.getElementById('email-modal-subject').textContent = btn.dataset.subject;
+    document.getElementById('email-modal-from').textContent = btn.dataset.from;
+    document.getElementById('email-modal-to').textContent = btn.dataset.to || '—';
+    document.getElementById('email-modal-date').textContent = btn.dataset.date;
+    document.getElementById('email-modal-body').textContent = btn.dataset.body;
+    var notesWrapper = document.getElementById('email-modal-notes-wrapper');
+    if (btn.dataset.notes) {
+        document.getElementById('email-modal-notes').textContent = btn.dataset.notes;
+        notesWrapper.classList.remove('hidden');
+    } else {
+        notesWrapper.classList.add('hidden');
+    }
+    document.getElementById('email-modal').classList.remove('hidden');
+}
+
+function closeEmailModal() {
+    document.getElementById('email-modal').classList.add('hidden');
+}
+
+document.getElementById('email-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeEmailModal();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeEmailModal();
+});
+</script>
 {% endblock %}

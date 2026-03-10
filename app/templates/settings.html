@@ -94,7 +94,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <h3 class="text-sm font-medium text-gray-900">Score Unscored</h3>
-                    <p class="text-xs text-gray-500">Score all emails without a score record.</p>
+                    <p class="text-xs text-gray-500">Score all unscored emails and conversations.</p>
                 </div>
                 <button onclick="startOperation('score')"
                         class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">Score</button>
@@ -117,11 +117,11 @@
             </div>
             <div class="flex items-center justify-between">
                 <div>
-                    <h3 class="text-sm font-medium text-gray-900">Rebuild Chains</h3>
-                    <p class="text-xs text-gray-500">Re-build email conversation chains.</p>
+                    <h3 class="text-sm font-medium text-gray-900">Rebuild Conversations</h3>
+                    <p class="text-xs text-gray-500">Re-build email conversations.</p>
                 </div>
                 <button onclick="startOperation('chain-build')"
-                        class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">Rebuild Chains</button>
+                        class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">Rebuild Conversations</button>
             </div>
         </div>
 
@@ -257,7 +257,7 @@
 
         <!-- Chain Evaluation -->
         <section class="bg-white shadow rounded-lg p-6">
-            <h2 class="text-lg font-semibold text-gray-900 mb-2">Chain Evaluation</h2>
+            <h2 class="text-lg font-semibold text-gray-900 mb-2">Conversation Evaluation</h2>
             <p class="text-sm text-gray-500 mb-5">Evaluates engaged back-and-forth conversations between a rep and a prospective client.</p>
 
             <div class="space-y-4">
@@ -427,8 +427,10 @@ function formatSummary(summary) {
     if (!summary) return '';
     const parts = [];
     if (summary.fetched != null) parts.push(`Fetched ${summary.fetched} emails`);
-    if (summary.scored != null) parts.push(`scored ${summary.scored}`);
+    if (summary.scored != null) parts.push(`scored ${summary.scored} emails`);
+    if (summary.chains_scored != null) parts.push(`scored ${summary.chains_scored} conversations`);
     if (summary.errors != null && summary.errors > 0) parts.push(`${summary.errors} errors`);
+    if (summary.chain_errors != null && summary.chain_errors > 0) parts.push(`${summary.chain_errors} conversation errors`);
     if (summary.new_reps != null && summary.new_reps > 0) parts.push(`${summary.new_reps} new reps`);
     if (summary.output_path) parts.push(`Export: ${summary.output_path}`);
     return parts.join(', ');

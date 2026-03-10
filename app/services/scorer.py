@@ -440,7 +440,7 @@ async def score_unscored_emails(
                         await session.rollback()
                         summary["batch_errors"] += 1
         finally:
-            await client.aclose()
+            await client.close()
 
     # Score unscored chains after individual emails
     chain_result = await score_unscored_chains(session, batch_size=batch_size)
@@ -611,7 +611,7 @@ async def score_unscored_chains(
                 await session.rollback()
                 summary["batch_errors"] += 1
     finally:
-        await client.aclose()
+        await client.close()
 
     return summary
 

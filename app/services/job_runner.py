@@ -214,6 +214,8 @@ async def run_score_job(
             summary = {
                 "scored": score_result.get("scored", 0),
                 "errors": score_result.get("errors", 0),
+                "chains_scored": score_result.get("chains_scored", 0),
+                "chain_errors": score_result.get("chain_errors", 0),
                 "tokens": score_result.get("total_input_tokens", 0)
                 + score_result.get("total_output_tokens", 0),
             }
