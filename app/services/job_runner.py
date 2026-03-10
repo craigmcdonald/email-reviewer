@@ -94,7 +94,7 @@ async def run_fetch_job(
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_running(job)
-            await s.flush()
+            await s.commit()
 
             settings = await get_settings(s)
             company_domains = [
@@ -128,6 +128,7 @@ async def run_fetch_job(
             if max_count is not None:
                 fetch_kwargs["max_count"] = max_count
 
+            # Stage 1: Fetch emails from HubSpot
             fetched_count = await fetch_and_store(
                 s,
                 access_token=app_config.HUBSPOT_ACCESS_TOKEN,
@@ -145,27 +146,52 @@ async def run_fetch_job(
                 )
             )
             new_reps_count = new_reps_result.scalar_one()
+            await s.commit()
 
             summary: dict = {"fetched": fetched_count, "new_reps": new_reps_count}
+            stage_errors: list[str] = []
 
-            classify_result = await classify_emails(s)
-            summary["auto_replies"] = classify_result.get("auto_replies_found", 0)
+            # Stage 2: Classify incoming emails (commits per batch internally)
+            try:
+                classify_result = await classify_emails(s)
+                summary["auto_replies"] = classify_result.get("auto_replies_found", 0)
+            except Exception as exc:
+                logger.exception("Fetch job %d: classify stage failed", job_id)
+                stage_errors.append(f"classify: {exc}")
 
-            await build_chains(s)
+            # Stage 3: Build conversation chains
+            try:
+                await build_chains(s)
+                await s.commit()
+            except Exception as exc:
+                logger.exception("Fetch job %d: chain build stage failed", job_id)
+                await s.rollback()
+                stage_errors.append(f"chain_build: {exc}")
 
+            # Stage 4: Score (commits per batch internally)
             should_score = auto_score if auto_score is not None else settings.auto_score_after_fetch
             if should_score:
-                score_result = await score_unscored_emails(
-                    s, batch_size=settings.scoring_batch_size
-                )
-                summary["scored"] = score_result.get("scored", 0)
-                summary["errors"] = score_result.get("errors", 0)
-                summary["tokens"] = score_result.get(
-                    "total_input_tokens", 0
-                ) + score_result.get("total_output_tokens", 0)
+                try:
+                    score_result = await score_unscored_emails(
+                        s, batch_size=settings.scoring_batch_size
+                    )
+                    summary["scored"] = score_result.get("scored", 0)
+                    summary["errors"] = score_result.get("errors", 0)
+                    summary["tokens"] = score_result.get(
+                        "total_input_tokens", 0
+                    ) + score_result.get("total_output_tokens", 0)
+                except Exception as exc:
+                    logger.exception("Fetch job %d: score stage failed", job_id)
+                    stage_errors.append(f"score: {exc}")
 
+            if stage_errors:
+                summary["stage_errors"] = stage_errors
+
+            # Re-fetch job to avoid stale ORM state after intermediate commits
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
             _set_completed(job, summary)
-            await s.flush()
+            await s.commit()
 
         except Exception as exc:
             await _fail_job(s, job_id, exc)
@@ -270,19 +296,3 @@ async def run_chain_build_job(
             await _fail_job(s, job_id, exc)
 
 
-async def run_classify_job(
-    session: Optional[AsyncSession], job_id: int
-) -> None:
-    async with _session_scope(session) as s:
-        try:
-            result = await s.execute(select(Job).where(Job.job_id == job_id))
-            job = result.scalar_one()
-            _set_running(job)
-            await s.flush()
-
-            classify_result = await classify_emails(s)
-            _set_completed(job, classify_result)
-            await s.flush()
-
-        except Exception as exc:
-            await _fail_job(s, job_id, exc)

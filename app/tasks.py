@@ -7,7 +7,6 @@ from typing import Optional
 
 from app.services.job_runner import (
     run_chain_build_job,
-    run_classify_job,
     run_export_job,
     run_fetch_job,
     run_rescore_job,
@@ -113,10 +112,3 @@ def chain_build_task(job_id: int) -> None:
     )
 
 
-def classify_task(job_id: int) -> None:
-    """RQ-compatible synchronous wrapper for run_classify_job."""
-    _run_with_error_handling(
-        run_classify_job(None, job_id),
-        job_id,
-        "CLASSIFY",
-    )

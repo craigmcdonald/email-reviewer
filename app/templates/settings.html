@@ -9,6 +9,7 @@
 <div class="border-b border-gray-200 mb-6">
     <nav class="flex gap-4" aria-label="Settings tabs">
         <button type="button" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px" data-tab="general">General</button>
+        <button type="button" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px" data-tab="classification">Classification</button>
         <button type="button" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 -mb-px" data-tab="evaluation">Evaluation</button>
     </nav>
 </div>
@@ -122,14 +123,6 @@
                 <button onclick="startOperation('chain-build')"
                         class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">Rebuild Chains</button>
             </div>
-            <div class="flex items-center justify-between">
-                <div>
-                    <h3 class="text-sm font-medium text-gray-900">Classify Emails</h3>
-                    <p class="text-xs text-gray-500">Classify incoming emails as auto-replies or real responses.</p>
-                </div>
-                <button onclick="startOperation('classify')"
-                        class="rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700">Classify</button>
-            </div>
         </div>
 
         <!-- Recent Jobs -->
@@ -138,6 +131,46 @@
             <p class="text-sm text-gray-500">Loading...</p>
         </div>
     </section>
+</div>
+
+<!-- Classification Tab -->
+<div id="tab-classification" class="tab-content">
+    <div class="space-y-8">
+        <section class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-2">Email Classification</h2>
+            <p class="text-sm text-gray-500 mb-5">Classifies incoming emails as auto-replies, bounces, or real responses, and extracts quoted email metadata.</p>
+
+            <div class="space-y-4">
+                <div>
+                    <label for="classifier_opening" class="block text-sm font-medium text-gray-700 mb-1">Opening Context</label>
+                    <textarea id="classifier_opening" rows="3"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.classifier_prompt_blocks.opening if settings.classifier_prompt_blocks else '' }}</textarea>
+                </div>
+                <div>
+                    <label for="classifier_email_type" class="block text-sm font-medium text-gray-700 mb-1">Email Type</label>
+                    <textarea id="classifier_email_type" rows="2"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.classifier_prompt_blocks.email_type if settings.classifier_prompt_blocks else '' }}</textarea>
+                </div>
+                <div>
+                    <label for="classifier_quoted_emails" class="block text-sm font-medium text-gray-700 mb-1">Quoted Emails</label>
+                    <textarea id="classifier_quoted_emails" rows="2"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.classifier_prompt_blocks.quoted_emails if settings.classifier_prompt_blocks else '' }}</textarea>
+                </div>
+                <div>
+                    <label for="classifier_closing" class="block text-sm font-medium text-gray-700 mb-1">Response Format</label>
+                    <textarea id="classifier_closing" rows="3"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.classifier_prompt_blocks.closing if settings.classifier_prompt_blocks else '' }}</textarea>
+                </div>
+            </div>
+        </section>
+
+        <div class="pb-8">
+            <button type="button" id="save-classification-btn"
+                    class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                Save Classification Settings
+            </button>
+        </div>
+    </div>
 </div>
 
 <!-- Evaluation Tab -->
@@ -549,6 +582,29 @@ document.getElementById('save-evaluation-btn').addEventListener('click', async (
         weight_personalisation: parseFloat(document.getElementById('weight_personalisation').value),
         weight_cta: parseFloat(document.getElementById('weight_cta').value),
         weight_clarity: parseFloat(document.getElementById('weight_clarity').value),
+    };
+    const resp = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const err = await resp.json();
+        alert(err.detail || 'Save failed');
+    }
+});
+
+// Classification tab save
+document.getElementById('save-classification-btn').addEventListener('click', async () => {
+    const data = {
+        classifier_prompt_blocks: {
+            opening: document.getElementById('classifier_opening').value,
+            email_type: document.getElementById('classifier_email_type').value,
+            quoted_emails: document.getElementById('classifier_quoted_emails').value,
+            closing: document.getElementById('classifier_closing').value,
+        },
     };
     const resp = await fetch('/api/settings', {
         method: 'PATCH',

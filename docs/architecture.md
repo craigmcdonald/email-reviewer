@@ -22,7 +22,7 @@ Dependencies flow strictly left to right.
 
 | Layer | Location | Role |
 |-------|----------|------|
-| Enums | `app/enums.py` | `(str, Enum)` definitions shared by models and schemas. Serialise as plain strings in the database and JSON. Includes `EmailDirection`, `JobType` (FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD, CLASSIFY), `JobStatus`, `RepType` (SDR, BizDev, AM, Non-Sales). |
+| Enums | `app/enums.py` | `(str, Enum)` definitions shared by models and schemas. Serialise as plain strings in the database and JSON. Includes `EmailDirection`, `JobType` (FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD), `JobStatus`, `RepType` (SDR, BizDev, AM, Non-Sales). |
 | Models | `app/models/` | SQLAlchemy ORM layer. One file per domain entity. All inherit `AuditMixin` and `Base`. |
 | Schemas | `app/schemas/` | Pydantic validation. Three schemas per entity: `Create`, `Update`, `Response`. One file per domain. |
 | Services | `app/services/` | Business logic. Pure functions where possible. Separated from routers. |
@@ -108,7 +108,7 @@ Seven tables:
 | Column | Type | Notes |
 |--------|------|-------|
 | job_id | Integer (PK) | Auto-increment |
-| job_type | String | FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD, or CLASSIFY |
+| job_type | String | FETCH, SCORE, RESCORE, EXPORT, or CHAIN_BUILD |
 | status | String | PENDING, RUNNING, COMPLETED, or FAILED |
 | started_at | DateTime | Set when status becomes RUNNING |
 | completed_at | DateTime | Set when status becomes COMPLETED or FAILED |
@@ -243,7 +243,9 @@ The entry point is `score_unscored_emails(session, batch_size=5)`, which:
 
 The classifier processes emails where `direction=INCOMING_EMAIL`, `is_auto_reply=False`, and `quoted_metadata IS NULL` (the NULL marker indicates unclassified). After classification, `quoted_metadata` is set to an array (possibly empty) to mark the email as processed.
 
-The entry point is `classify_emails(session, batch_size=10)`, which returns a summary dict with `total`, `classified`, `auto_replies_found`, `chains_extracted`, and `errors`.
+The entry point is `classify_emails(session, batch_size=10)`. It follows the same batch-commit pattern as the scorer: Phase 1 collects plain IDs (no ORM objects held across batches), Phase 2 processes pattern matches in committed batches, Phase 3 processes Haiku API calls in committed batches. Each batch re-queries fresh ORM objects by ID, commits on success, and rolls back on failure so completed batches survive crashes. Returns a summary dict with `total`, `classified`, `auto_replies_found`, `chains_extracted`, `errors`, and `batch_errors`.
+
+Classification runs automatically as part of every fetch job (between fetch and chain building). There is no standalone classify endpoint.
 
 Auto-reply emails are excluded from scoring and chain building. The chain builder ignores emails with `is_auto_reply=True` when counting incoming emails, determining unanswered status, and computing `last_activity_at`.
 
@@ -299,7 +301,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 
 | Route | View |
 |-------|------|
-| `GET /settings` | Tabbed settings page (HTML, excluded from OpenAPI). Accepts `?tab=` query parameter: `general` (default), `scoring`, `chain-evaluation`. All tab content is rendered server-side; JS toggles visibility. |
+| `GET /settings` | Tabbed settings page (HTML, excluded from OpenAPI). Accepts `?tab=` query parameter: `general` (default), `classification`, `evaluation`. All tab content is rendered server-side; JS toggles visibility. |
 
 ### JSON API (`app/routers/api.py`)
 
@@ -330,7 +332,6 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 | `POST /api/operations/rescore` | 202 with job record. Rejects 409 if SCORE or RESCORE is RUNNING. |
 | `POST /api/operations/export` | 202 with job record. |
 | `POST /api/operations/chain-build` | 202 with job record. Rejects 409 if a CHAIN_BUILD job is RUNNING. |
-| `POST /api/operations/classify` | 202 with job record. Rejects 409 if a CLASSIFY job is RUNNING. Classifies incoming emails as auto-replies or real emails. |
 | `GET /api/operations/jobs` | List of `JobResponse` ordered by created_at desc |
 | `GET /api/operations/jobs/{job_id}` | Single `JobResponse` |
 | `GET /api/operations/last-run` | Most recent completed job per type (or null) |
@@ -385,12 +386,11 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 
 `app/tasks.py` provides synchronous wrapper functions (`fetch_task`, `score_task`, `rescore_task`, `export_task`) for RQ. Each calls `asyncio.run()` on the corresponding async runner with `session=None`, so the runner creates its own session.
 
-- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count, auto_score)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided), calls `fetch_and_store` with company_domains and optional `end_date`/`max_count`. Runs `build_chains` after fetch to group emails into conversation chains. Runs scoring after chain building when `auto_score` is true, or when `auto_score` is None and the `auto_score_after_fetch` setting is true. Result summary includes `fetched`, `new_reps`, and optionally `scored`, `errors`, `tokens`.
+- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count, auto_score)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided), then runs four stages in sequence, each committing independently so completed work survives later failures: (1) `fetch_and_store` with company_domains and optional `end_date`/`max_count`, (2) `classify_emails` to classify incoming emails as auto-replies or real responses, (3) `build_chains` to group emails into conversation chains, (4) `score_unscored_emails` when `auto_score` is true or when `auto_score` is None and the `auto_score_after_fetch` setting is true. Each stage is wrapped in try/except; if a stage fails, prior committed results are preserved and the error is recorded in `result_summary.stage_errors`. Result summary includes `fetched`, `new_reps`, `auto_replies`, and optionally `scored`, `errors`, `tokens`.
 - `run_score_job(session, job_id)` — reads `scoring_batch_size` from settings, calls `score_unscored_emails`. Result summary includes `scored`, `errors`, `tokens`.
 - `run_rescore_job(session, job_id)` — deletes all existing chain_scores and scores, then calls `score_unscored_emails` to score every email and chain. Result summary includes `scored`, `errors`, `tokens`, `chains_scored`, `chain_errors`.
 - `run_export_job(session, job_id, output_path)` — generates Excel via `export_to_excel`, stores path in result summary.
 - `run_chain_build_job(session, job_id)` — calls `build_chains`, stores result summary with `chains_created`, `chains_updated`, and `emails_linked` counts.
-- `run_classify_job(session, job_id)` — calls `classify_emails`, stores result summary with `total`, `classified`, `auto_replies_found`, `chains_extracted`, and `errors` counts.
 
 No FULL_RUN job type. A FETCH job can handle both fetch and score phases. The `auto_score` request parameter controls scoring per-fetch; when omitted, the `auto_score_after_fetch` setting applies. Cron POSTs to `/api/operations/fetch` and the setting controls the default behaviour. The UI exposes a "Score after fetch" checkbox initialised from the setting, allowing per-fetch override.
 
