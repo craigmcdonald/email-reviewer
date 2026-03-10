@@ -27,7 +27,7 @@
 .full-email-link:hover { color: #2563eb; text-decoration: underline; }
 
 /* Chevron */
-.chevron { width: 16px; height: 16px; color: #9ca3af; transition: transform 0.15s; flex-shrink: 0; }
+.chevron { width: 16px; height: 16px; color: #9ca3af; transition: transform 0.15s; flex-shrink: 0; position: relative; top: 2px; }
 .email-row.expanded .chevron { transform: rotate(90deg); }
-.subject-cell { display: flex; align-items: center; gap: 8px; }
-.subject-text { color: #2563eb; font-weight: 500; }
+.subject-cell { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.subject-text { color: #2563eb; font-weight: 500; min-width: 0; word-break: break-word; }
