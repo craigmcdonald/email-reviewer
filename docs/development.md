@@ -99,7 +99,12 @@ When `AUTH_ENABLED=FALSE` (the default for local development), the settings page
 pipenv run pytest
 ```
 
-Tests use an in-memory SQLite database, so no PostgreSQL setup is needed. Configuration is in `pytest.ini`.
+Tests run against a local PostgreSQL database (`email_reviewer_test`). The connection string is configured in `pytest.ini`. Create the test database before running tests:
+
+```bash
+createuser test --pwprompt   # password: test
+createdb email_reviewer_test -O test
+```
 
 Key test options (already configured in `pytest.ini`):
 - `--maxfail=3` stops after 3 failures
@@ -138,7 +143,7 @@ GitHub Actions runs on every push and pull request to `main`. The workflow (`.gi
 3. Runs `alembic upgrade head` against the test database
 4. Runs `pytest`
 
-The CI database URL is set to the PostgreSQL service container. Tests themselves use in-memory SQLite regardless of this variable (overridden in `pytest.ini`).
+The CI PostgreSQL service container credentials match `pytest.ini` (`test:test@localhost:5432/email_reviewer_test`). Migrations run against this database before tests.
 
 ## Background Jobs
 

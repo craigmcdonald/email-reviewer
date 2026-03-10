@@ -1,6 +1,6 @@
 # Data Model
 
-PostgreSQL in production, async SQLite in tests. The async SQLAlchemy engine uses `asyncpg` as the driver. All tables include audit columns (`created_at`, `updated_at`, `created_by`, `updated_by`) via `AuditMixin`.
+PostgreSQL with the `asyncpg` driver. All tables include audit columns (`created_at`, `updated_at`, `created_by`, `updated_by`) via `AuditMixin`.
 
 ## Tables
 

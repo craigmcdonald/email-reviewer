@@ -30,7 +30,7 @@ Dependencies flow strictly left to right.
 
 ## Database
 
-PostgreSQL in production, async SQLite in tests. The async SQLAlchemy engine uses `asyncpg` as the driver. Session management is handled by a FastAPI dependency (`get_db`) that yields an `AsyncSession`.
+PostgreSQL with the `asyncpg` driver. Session management is handled by a FastAPI dependency (`get_db`) that yields an `AsyncSession`. Tests run against a dedicated PostgreSQL database for full parity with production.
 
 ### Schema
 
@@ -168,7 +168,7 @@ Routers never set audit fields directly.
 |----------|---------|---------|
 | `APP_NAME` | `Email Reviewer` | Application name |
 | `APP_VERSION` | `0.1.0` | Application version |
-| `DATABASE_URL` | `sqlite+aiosqlite:///email_reviewer.db` | Database connection string |
+| `DATABASE_URL` | `sqlite+aiosqlite:///email_reviewer.db` | Database connection string. Production uses `postgresql://...`; tests use `postgresql+asyncpg://...` configured in `pytest.ini`. |
 | `HUBSPOT_ACCESS_TOKEN` | (empty) | HubSpot API authentication |
 | `ANTHROPIC_API_KEY` | (empty) | Claude API authentication |
 | `AUTH_ENABLED` | `False` | Toggle authentication |
@@ -398,7 +398,7 @@ No FULL_RUN job type. A FETCH job can handle both fetch and score phases. The `a
 
 **Async throughout** - The entire stack is async (FastAPI, SQLAlchemy async sessions, asyncpg). This aligns with the concurrent Claude API calls in the scorer and avoids mixing sync and async database access.
 
-**PostgreSQL with SQLite test fallback** - Production uses PostgreSQL for reliability and Heroku compatibility. Tests use in-memory SQLite for speed and isolation. A compiler extension maps PostgreSQL-specific types (JSONB) to SQLite equivalents.
+**PostgreSQL everywhere** - Both production and tests use PostgreSQL. This eliminates type-mapping workarounds and ensures query behaviour is identical across environments.
 
 **Idempotent operations** - Both the fetcher (upsert on hubspot_id) and scorer (skip emails with existing scores) are safe to re-run. Partial failures leave the database in a consistent state.
 
