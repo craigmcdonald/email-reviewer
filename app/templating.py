@@ -27,7 +27,7 @@ def _strip_signature(text: str) -> str:
     """
     result = re.split(
         r"\n-- ?\n"
-        r"|\n(?:Kind regards|Best regards|Best wishes|Regards|Thanks|Cheers|Many thanks),?\s*\n",
+        r"|\n(?:Kind regards|Best regards|Best wishes|Regards|Thanks|Cheers|Many thanks|All the best|Best),?\s*\n",
         text, maxsplit=1, flags=re.IGNORECASE,
     )
     return result[0]
