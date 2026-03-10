@@ -23,7 +23,7 @@ class Email(AuditMixin, Base):
     subject: Mapped[Optional[str]] = mapped_column(String, default=None)
     body_text: Mapped[Optional[str]] = mapped_column(Text, default=None)
     direction: Mapped[Optional[str]] = mapped_column(String, default=None)
-    hubspot_id: Mapped[Optional[str]] = mapped_column(String, default=None)
+    hubspot_id: Mapped[Optional[str]] = mapped_column(String, default=None, index=True, unique=True)
     fetched_at: Mapped[Optional[datetime]] = mapped_column(default=None)
 
     chain_id: Mapped[Optional[int]] = mapped_column(

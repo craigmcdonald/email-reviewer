@@ -4,13 +4,13 @@ import asyncio
 import json
 import logging
 import math
-from datetime import datetime
 
 from anthropic import AsyncAnthropic, RateLimitError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.models.base import _utcnow
 from app.models.chain import EmailChain
 from app.models.chain_score import ChainScore
 from app.models.email import Email
@@ -432,7 +432,7 @@ async def score_unscored_emails(
                             overall=overall,
                             notes=scoring_result.notes,
                             score_error=False,
-                            scored_at=datetime.utcnow(),
+                            scored_at=_utcnow(),
                         )
                         session.add(score)
                         summary["scored"] += 1
@@ -442,7 +442,7 @@ async def score_unscored_emails(
                         score = Score(
                             email_id=email.id,
                             score_error=True,
-                            scored_at=datetime.utcnow(),
+                            scored_at=_utcnow(),
                         )
                         session.add(score)
                         summary["errors"] += 1
@@ -620,7 +620,7 @@ async def score_unscored_chains(
                         avg_response_hours=avg_hours,
                         notes=scoring_result.notes,
                         score_error=False,
-                        scored_at=datetime.utcnow(),
+                        scored_at=_utcnow(),
                     )
                     session.add(chain_score)
                     summary["chains_scored"] += 1
@@ -628,7 +628,7 @@ async def score_unscored_chains(
                     chain_score = ChainScore(
                         chain_id=chain_id,
                         score_error=True,
-                        scored_at=datetime.utcnow(),
+                        scored_at=_utcnow(),
                     )
                     session.add(chain_score)
                     summary["errors"] += 1
