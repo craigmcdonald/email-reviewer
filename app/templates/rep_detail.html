@@ -71,36 +71,36 @@
 {# ========== Macro: email score table ========== #}
 {% macro email_table(items, empty_msg) %}
 <div class="bg-white rounded-lg shadow overflow-hidden">
-    <table class="w-full table-fixed divide-y divide-gray-200">
+    <table class="w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
             <tr>
-                <th class="w-[40%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
-                <th class="w-[10%] px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                <th class="w-[10%] px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase">Overall</th>
-                <th class="w-[10%] px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pers.</th>
-                <th class="w-[10%] px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase">Clarity</th>
-                <th class="w-[10%] px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value Prop</th>
-                <th class="w-[10%] px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase">CTA</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Date</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Overall</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Personalisation</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Clarity</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Value Prop</th>
+                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">CTA</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-gray-200">
             {% for email in items %}
             <tr class="email-row cursor-pointer" onclick="toggleRow(this)">
-                <td class="px-4 py-4 truncate">
+                <td class="px-4 py-4 max-w-0">
                     <div class="subject-cell">
                         <svg class="chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                         <span class="subject-text truncate">{{ email.subject or "(no subject)" }}</span>
                     </div>
                 </td>
-                <td class="px-2 py-4 whitespace-nowrap text-sm text-gray-500">{{ email.timestamp.strftime("%Y-%m-%d") if email.timestamp else "—" }}</td>
+                <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{{ email.timestamp.strftime("%Y-%m-%d") if email.timestamp else "—" }}</td>
                 {% if email.score %}
-                <td class="px-2 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.overall) }}">{{ email.score.overall }}</span></td>
-                <td class="px-2 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.personalisation) }}">{{ email.score.personalisation }}</span></td>
-                <td class="px-2 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.clarity) }}">{{ email.score.clarity }}</span></td>
-                <td class="px-2 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.value_proposition) }}">{{ email.score.value_proposition }}</span></td>
-                <td class="px-2 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.cta) }}">{{ email.score.cta }}</span></td>
+                <td class="px-3 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.overall) }}">{{ email.score.overall }}</span></td>
+                <td class="px-3 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.personalisation) }}">{{ email.score.personalisation }}</span></td>
+                <td class="px-3 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.clarity) }}">{{ email.score.clarity }}</span></td>
+                <td class="px-3 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.value_proposition) }}">{{ email.score.value_proposition }}</span></td>
+                <td class="px-3 py-4 whitespace-nowrap"><span class="{{ score_class(email.score.cta) }}">{{ email.score.cta }}</span></td>
                 {% else %}
-                <td colspan="5" class="px-2 py-4 text-gray-400">Not scored</td>
+                <td colspan="5" class="px-3 py-4 text-gray-400">Not scored</td>
                 {% endif %}
             </tr>
             <tr>
