@@ -14,26 +14,23 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: sidp
-          POSTGRES_PASSWORD: sidp
-          POSTGRES_DB: sidp_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: email_reviewer_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U sidp"
+          --health-cmd="pg_isready -U test"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=5
-
-    env:
-      DATABASE_URL: postgresql://sidp:sidp@localhost:5432/sidp_test
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install pipenv and dependencies
         run: |
@@ -41,6 +38,8 @@ jobs:
           pipenv install --dev --deploy
 
       - name: Run migrations
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/email_reviewer_test
         run: pipenv run alembic upgrade head
 
       - name: Test
