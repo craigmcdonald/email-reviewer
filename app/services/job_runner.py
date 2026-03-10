@@ -15,6 +15,7 @@ from app.enums import JobStatus, JobType
 from app.models.chain_score import ChainScore
 from app.models.email import Email
 from app.models.job import Job
+from app.models.rep import Rep
 from app.models.score import Score
 from app.services.chain_builder import build_chains
 from app.services.classifier import classify_emails
@@ -129,6 +130,11 @@ async def run_fetch_job(
                 fetch_kwargs["max_count"] = max_count
 
             # Stage 1: Fetch emails from HubSpot
+            reps_before_result = await s.execute(
+                select(func.count()).select_from(Rep)
+            )
+            reps_before = reps_before_result.scalar_one()
+
             fetched_count = await fetch_and_store(
                 s,
                 access_token=app_config.HUBSPOT_ACCESS_TOKEN,
@@ -136,16 +142,10 @@ async def run_fetch_job(
                 **fetch_kwargs,
             )
 
-            # Count new reps created in this session
-            new_reps_result = await s.execute(
-                select(func.count()).select_from(
-                    select(Email.from_email)
-                    .distinct()
-                    .where(Email.fetched_at.isnot(None))
-                    .subquery()
-                )
+            reps_after_result = await s.execute(
+                select(func.count()).select_from(Rep)
             )
-            new_reps_count = new_reps_result.scalar_one()
+            new_reps_count = reps_after_result.scalar_one() - reps_before
             await s.commit()
 
             summary: dict = {"fetched": fetched_count, "new_reps": new_reps_count}
