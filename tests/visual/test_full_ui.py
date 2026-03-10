@@ -484,11 +484,11 @@ def run_tests(driver, chain_bf_id, chain_u_id):
         else:
             print(f"  Dimension '{dim}': present")
 
-    # Check email thread
-    thread_cards = driver.find_elements(By.CSS_SELECTOR, ".space-y-4 > div.bg-white")
-    print(f"  Thread emails: {len(thread_cards)}")
-    if len(thread_cards) != 3:
-        issues.append(f"Chain detail: expected 3 emails in thread, got {len(thread_cards)}")
+    # Check email thread rows
+    thread_rows = driver.find_elements(By.CSS_SELECTOR, ".email-row")
+    print(f"  Thread email rows: {len(thread_rows)}")
+    if len(thread_rows) != 3:
+        issues.append(f"Chain detail: expected 3 email rows in thread, got {len(thread_rows)}")
 
     # Check direction badges
     outgoing = driver.find_elements(By.XPATH, "//*[contains(@class,'bg-blue-100')]")
@@ -514,10 +514,61 @@ def run_tests(driver, chain_bf_id, chain_u_id):
     else:
         print("  No score card shown: correct")
 
-    thread_cards = driver.find_elements(By.CSS_SELECTOR, ".space-y-4 > div.bg-white")
-    print(f"  Thread emails: {len(thread_cards)}")
-    if len(thread_cards) != 2:
-        issues.append(f"Chain detail (unscored): expected 2 emails, got {len(thread_cards)}")
+    thread_rows = driver.find_elements(By.CSS_SELECTOR, ".email-row")
+    print(f"  Thread email rows: {len(thread_rows)}")
+    if len(thread_rows) != 2:
+        issues.append(f"Chain detail (unscored): expected 2 email rows, got {len(thread_rows)}")
+
+    # ===== 7b. CHAIN DETAIL: Expand email row + modal =====
+    print(f"\n=== Chain Detail: Expand + Modal (id={chain_bf_id}) ===")
+    driver.get(f"{BASE}/chains/{chain_bf_id}")
+    time.sleep(1)
+
+    # Click first email row to expand
+    chain_email_rows = driver.find_elements(By.CSS_SELECTOR, ".email-row")
+    if chain_email_rows:
+        chain_email_rows[0].click()
+        time.sleep(0.5)
+        screenshot(driver, "09b_chain_detail_expanded")
+
+        open_panel = driver.find_elements(By.CSS_SELECTOR, ".detail-panel.open")
+        if not open_panel:
+            issues.append("Chain detail: email row didn't expand")
+        else:
+            print("  Email row expanded: yes")
+            ai_notes = driver.find_elements(By.CSS_SELECTOR, ".detail-panel.open .ai-notes")
+            print(f"  AI notes visible: {bool(ai_notes)}")
+            body = driver.find_elements(By.CSS_SELECTOR, ".detail-panel.open .email-body-text")
+            print(f"  Email body visible: {bool(body)}")
+            view_link = driver.find_elements(By.CSS_SELECTOR, ".detail-panel.open .full-email-link")
+            print(f"  'View full email' link: {bool(view_link)}")
+
+        # Open modal
+        driver.execute_script("""
+            var btn = document.querySelector('.detail-panel.open .full-email-link');
+            if (btn) btn.click();
+        """)
+        time.sleep(0.5)
+        screenshot(driver, "09c_chain_detail_modal")
+        modal = driver.find_elements(By.CSS_SELECTOR, "#email-modal:not(.hidden)")
+        if not modal:
+            issues.append("Chain detail: email modal didn't open")
+        else:
+            print("  Modal opened: yes")
+
+        # Close modal
+        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+        time.sleep(0.3)
+
+        # Test accordion: click second row, first should close
+        if len(chain_email_rows) >= 2:
+            chain_email_rows[1].click()
+            time.sleep(0.5)
+            first_still = "expanded" in chain_email_rows[0].get_attribute("class")
+            second_exp = "expanded" in chain_email_rows[1].get_attribute("class")
+            print(f"  Accordion: first={first_still}, second={second_exp}")
+            if first_still:
+                issues.append("Chain detail: accordion didn't close first row")
 
     # ===== 8. CHAIN DETAIL VIA REP PAGE LINK =====
     print("\n=== Rep Detail -> Chain Detail Click ===")
