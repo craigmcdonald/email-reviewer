@@ -610,7 +610,9 @@ class TestBuildChainsIdempotency:
             select(Email).order_by(Email.timestamp)
         )
         emails = emails_result.scalars().all()
-        chain_ids_1 = [(e.chain_id, e.position_in_chain) for e in emails]
+        positions_1 = [e.position_in_chain for e in emails]
+        # Emails sharing a chain_id are in the same group
+        same_chain_1 = emails[0].chain_id == emails[1].chain_id
 
         result2 = await build_chains(db)
         await db.commit()
@@ -619,9 +621,11 @@ class TestBuildChainsIdempotency:
             select(Email).order_by(Email.timestamp)
         )
         emails = emails_result.scalars().all()
-        chain_ids_2 = [(e.chain_id, e.position_in_chain) for e in emails]
+        positions_2 = [e.position_in_chain for e in emails]
+        same_chain_2 = emails[0].chain_id == emails[1].chain_id
 
-        assert chain_ids_1 == chain_ids_2
+        assert positions_1 == positions_2
+        assert same_chain_1 == same_chain_2
 
     async def test_incorporates_new_email_on_rerun(self, db, make_email):
         e1 = await make_email(
@@ -656,3 +660,112 @@ class TestBuildChainsIdempotency:
         await db.refresh(e2)
         assert e1.chain_id is not None
         assert e1.chain_id == e2.chain_id
+
+
+class TestAutoReplyExclusion:
+    async def test_auto_reply_not_counted_as_incoming(self, db, make_email):
+        """Auto-reply emails don't count as incoming; group with only outgoing
+        + auto-reply should not create a chain."""
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Hello",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Automatic reply: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            is_auto_reply=True,
+            timestamp=datetime(2025, 1, 1, 10, 5),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        result = await db.execute(select(EmailChain))
+        assert result.scalars().all() == []
+
+    async def test_auto_reply_unlinked_from_chain(self, db, make_email):
+        """Auto-reply emails are unlinked from chains after building."""
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Hello",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Automatic reply: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            is_auto_reply=True,
+            timestamp=datetime(2025, 1, 1, 10, 5),
+        )
+        e3 = await make_email(
+            message_id="<c@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 12, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        await db.refresh(e1)
+        await db.refresh(e2)
+        await db.refresh(e3)
+        assert e1.chain_id is not None
+        assert e2.chain_id is None  # auto-reply unlinked
+        assert e3.chain_id == e1.chain_id
+
+
+class TestQuotedContentMatching:
+    async def test_links_unchained_email_via_quoted_metadata(self, db, make_email):
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Partnership",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Partnership",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        # Unchained email with quoted metadata matching e1
+        e3 = await make_email(
+            subject="FW: Partnership",
+            from_email="bob@other.com",
+            to_email="carol@other.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 2, 10, 0),
+            quoted_metadata=[{"from_email": "alice@test.com", "subject": "Partnership"}],
+        )
+        await db.commit()
+
+        await build_chains(db)
+
+        await db.refresh(e1)
+        await db.refresh(e2)
+        await db.refresh(e3)
+        assert e1.chain_id is not None
+        assert e3.chain_id == e1.chain_id

@@ -9,13 +9,13 @@ from app.models.base import _utcnow
 from app.models.job import Job
 from app.routers.operations import STALE_PENDING_MINUTES
 from app.worker import redis_available
-from tests.conftest import TestingSessionLocal
+from tests.conftest import _get_session_factory
 
 
 @asynccontextmanager
 async def _test_worker_session():
     """Replacement for worker_session that uses the test database."""
-    async with TestingSessionLocal() as session:
+    async with _get_session_factory()() as session:
         yield session
 
 
@@ -115,13 +115,13 @@ class TestJobResponseShape:
     async def test_jobs_include_result_summary_and_timestamps(
         self, client, db, make_job
     ):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         job = await make_job(
             job_type=JobType.FETCH,
             status=JobStatus.COMPLETED,
-            started_at=datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc),
-            completed_at=datetime(2025, 1, 1, 12, 5, tzinfo=timezone.utc),
+            started_at=datetime(2025, 1, 1, 12, 0),
+            completed_at=datetime(2025, 1, 1, 12, 5),
             result_summary={"fetched": 50, "scored": 45},
         )
         await db.commit()

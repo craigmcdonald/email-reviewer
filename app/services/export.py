@@ -146,6 +146,7 @@ async def export_rep_emails(
     score_min: int | None = None,
     score_max: int | None = None,
     export_all: bool = False,
+    email_type: str | None = None,
 ) -> BytesIO:
     """Export a single rep's scored emails to an Excel workbook in memory.
 
@@ -158,6 +159,19 @@ async def export_rep_emails(
         Email.from_email == rep_email,
         Score.score_error.is_(False),
     ]
+
+    if email_type in ("outreach", "follow_up"):
+        from app.services.rep import _follow_up_ids
+        fu_ids = await _follow_up_ids(session, rep_email)
+        filters.append(Email.chain_id.is_(None))
+        if email_type == "outreach":
+            if fu_ids:
+                filters.append(Email.id.notin_(fu_ids))
+        elif email_type == "follow_up":
+            if fu_ids:
+                filters.append(Email.id.in_(fu_ids))
+            else:
+                filters.append(Email.id == -1)
 
     if not export_all:
         if search:
@@ -212,6 +226,77 @@ async def export_rep_emails(
         for i, dim in enumerate(SCORE_DIMS):
             cell = ws.cell(row=row_num, column=4 + i)
             fill = _score_fill(getattr(score, dim))
+            if fill:
+                cell.fill = fill
+
+    ws.auto_filter.ref = ws.dimensions
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+CHAIN_HEADERS = [
+    "Subject", "Emails", "Last Activity",
+    "Progression", "Responsiveness", "Persistence",
+    "Quality", "Notes",
+]
+
+CHAIN_SCORE_DIMS = [
+    "progression", "responsiveness", "persistence", "conversation_quality",
+]
+
+
+async def export_rep_chains(
+    session: AsyncSession,
+    rep_email: str,
+    *,
+    search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    score_min: int | None = None,
+    score_max: int | None = None,
+    export_all: bool = False,
+    status: str | None = None,
+) -> BytesIO:
+    """Export a rep's conversation chains to an Excel workbook in memory."""
+    from app.services.chain import get_rep_chains
+
+    if export_all:
+        result = await get_rep_chains(session, rep_email, page=1, per_page=10000)
+    else:
+        result = await get_rep_chains(
+            session, rep_email, page=1, per_page=10000,
+            search=search, date_from=date_from, date_to=date_to,
+            score_min=score_min, score_max=score_max, status=status,
+        )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Conversations"
+    ws.append(CHAIN_HEADERS)
+    for cell in ws[1]:
+        cell.font = HEADER_FONT
+    ws.freeze_panes = "A2"
+
+    for chain in result["items"]:
+        ws.append([
+            chain.get("normalized_subject", ""),
+            chain.get("email_count", 0),
+            chain.get("last_activity_at"),
+            chain.get("progression"),
+            chain.get("responsiveness"),
+            chain.get("persistence"),
+            chain.get("conversation_quality"),
+            "",
+        ])
+        row_num = ws.max_row
+        for col in range(1, len(CHAIN_HEADERS) + 1):
+            ws.cell(row=row_num, column=col).font = BODY_FONT
+        for i, dim in enumerate(CHAIN_SCORE_DIMS):
+            cell = ws.cell(row=row_num, column=4 + i)
+            fill = _score_fill(chain.get(dim))
             if fill:
                 cell.fill = fill
 

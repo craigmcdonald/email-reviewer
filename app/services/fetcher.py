@@ -79,6 +79,12 @@ def filter_relevant_emails(
             domain = to_email.rsplit("@", 1)[1].lower()
             if domain not in lower_domains:
                 continue
+            # Filter out calendar event responses
+            subject = props.get("hs_email_subject") or ""
+            if (subject.startswith("Accepted:") or
+                    subject.startswith("Declined:") or
+                    subject.startswith("Tentative:")):
+                continue
             result.append(email)
 
     return result

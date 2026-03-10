@@ -187,7 +187,7 @@ async def build_chains(session: AsyncSession) -> dict:
             all_participants |= _email_participants(e)
             if _is_outgoing(e):
                 outgoing += 1
-            else:
+            elif not e.is_auto_reply:
                 incoming += 1
 
         # Follow-up sequence: all outgoing, no replies. Skip chain creation.
@@ -195,9 +195,10 @@ async def build_chains(session: AsyncSession) -> dict:
             continue
 
         # Determine if this is an unanswered reply (no outgoing after last incoming)
+        # Ignore auto-reply timestamps when determining unanswered status
         last_incoming_ts = None
         for e in reversed(group_emails):
-            if not _is_outgoing(e):
+            if not _is_outgoing(e) and not e.is_auto_reply:
                 last_incoming_ts = e.timestamp
                 break
         has_outgoing_after_incoming = any(
@@ -225,6 +226,49 @@ async def build_chains(session: AsyncSession) -> dict:
             e.chain_id = chain.id
             e.position_in_chain = pos
             emails_linked += 1
+
+    # Unlink auto-reply emails from chains
+    for e in emails:
+        if e.is_auto_reply and e.chain_id is not None:
+            e.chain_id = None
+            e.position_in_chain = None
+
+    await session.flush()
+
+    # Pass 4: quoted-content matching for unchained emails with quoted_metadata
+    unchained_with_quotes = [
+        e for e in emails
+        if e.chain_id is None and e.quoted_metadata
+    ]
+    for e in unchained_with_quotes:
+        quoted = e.quoted_metadata
+        if not isinstance(quoted, list):
+            continue
+        for q in quoted:
+            q_from = q.get("from_email", "")
+            q_subject = q.get("subject", "")
+            if not q_from or not q_subject:
+                continue
+            q_norm = normalize_subject(q_subject)
+            # Find matching emails in the database
+            for other in emails:
+                if other.id == e.id:
+                    continue
+                if (other.from_email and other.from_email.lower() == q_from.lower()
+                        and normalize_subject(other.subject) == q_norm):
+                    # Link both into the same group
+                    if other.chain_id is not None:
+                        # Add this email to other's chain
+                        e.chain_id = other.chain_id
+                        # Get max position
+                        max_pos = max(
+                            (x.position_in_chain or 0)
+                            for x in emails if x.chain_id == other.chain_id
+                        )
+                        e.position_in_chain = max_pos + 1
+                        break
+            if e.chain_id is not None:
+                break
 
     await session.flush()
 

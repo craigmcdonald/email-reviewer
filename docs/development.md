@@ -99,7 +99,12 @@ When `AUTH_ENABLED=FALSE` (the default for local development), the settings page
 pipenv run pytest
 ```
 
-Tests use an in-memory SQLite database, so no PostgreSQL setup is needed. Configuration is in `pytest.ini`.
+Tests run against a local PostgreSQL database (`email_reviewer_test`). The connection string is configured in `pytest.ini`. Create the test database before running tests:
+
+```bash
+createuser test --pwprompt   # password: test
+createdb email_reviewer_test -O test
+```
 
 Key test options (already configured in `pytest.ini`):
 - `--maxfail=3` stops after 3 failures
@@ -138,7 +143,7 @@ GitHub Actions runs on every push and pull request to `main`. The workflow (`.gi
 3. Runs `alembic upgrade head` against the test database
 4. Runs `pytest`
 
-The CI database URL is set to the PostgreSQL service container. Tests themselves use in-memory SQLite regardless of this variable (overridden in `pytest.ini`).
+The CI PostgreSQL service container credentials match `pytest.ini` (`test:test@localhost:5432/email_reviewer_test`). Migrations run against this database before tests.
 
 ## Background Jobs
 
@@ -153,6 +158,7 @@ Operations run as background jobs. The app supports two modes:
 | Rescore | `POST /api/operations/rescore` | Delete all scores and re-score every email and chain. |
 | Export | `POST /api/operations/export` | Generate Excel workbook of scored emails and rep averages. |
 | Rebuild Chains | `POST /api/operations/chain-build` | Rebuild conversation chains from email threading data. |
+| Classify | `POST /api/operations/classify` | Classify incoming emails as auto-replies or real emails using pattern matching and Haiku. |
 | Score Chains | Included in Score/Rescore | Chain-level scoring runs automatically after individual email scoring. |
 
 ### Default: In-Process (No Redis)
@@ -268,9 +274,10 @@ email-reviewer/
 │   │   ├── export.py         # Excel export of scores and rep averages
 │   │   ├── fetcher.py        # HubSpot email fetch and upsert
 │   │   ├── rep.py            # Dashboard queries (team, rep emails, stats)
+│   │   ├── classifier.py     # Email classification (auto-reply detection via patterns + Haiku)
 │   │   ├── scorer.py         # Claude API email scoring
 │   │   ├── settings.py       # Settings CRUD (get_settings, update_settings)
-│   │   └── job_runner.py     # Job execution (fetch, score, rescore, export, chain build)
+│   │   └── job_runner.py     # Job execution (fetch, score, rescore, export, chain build, classify)
 │   ├── static/               # Static assets
 │   │   └── css/
 │   │       ├── input.css     # Tailwind CSS input (import directive)
@@ -279,9 +286,10 @@ email-reviewer/
 │   ├── templates/            # Jinja2 HTML templates
 │   │   ├── base.html         # Layout with nav bar
 │   │   ├── team.html         # Rep team table with chain columns
-│   │   ├── rep_detail.html   # Rep email list with expandable preview and chains section
+│   │   ├── rep_detail.html   # Rep detail with three sections: Outreach, Follow-ups, Conversations
 │   │   ├── chains.html       # Chain list table
 │   │   ├── chain_detail.html # Chain conversation thread with score panel
+│   │   ├── _pagination.html  # Reusable pagination partial (parameterized for multi-section pages)
 │   │   └── settings.html     # Settings form + operations panel
 │   └── templating.py         # Shared Jinja2Templates with cache-bust helper
 ├── alembic/                  # Migration configuration and scripts
@@ -313,7 +321,8 @@ email-reviewer/
 │   ├── test_main.py          # Health endpoint
 │   ├── test_enums.py         # Enum values
 │   ├── test_models.py        # Model registration and relationships
-│   ├── test_chain_builder.py  # Chain builder service
+│   ├── test_chain_builder.py  # Chain builder service (includes auto-reply exclusion and quoted content matching)
+│   ├── test_classifier.py    # Classifier service (subject pattern matching and Haiku classification)
 │   ├── test_chain_schema.py  # Chain score schema validation
 │   ├── test_email_schema.py  # Schema validation
 │   ├── test_api_router.py    # JSON API endpoints (reps, emails, stats, chains)

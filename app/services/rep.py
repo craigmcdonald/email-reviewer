@@ -208,6 +208,36 @@ async def get_rep_emails(
 
     result = await session.execute(stmt)
     items = result.scalars().unique().all()
+
+    # Compute time_gap_seconds for follow-up emails
+    if email_type == "follow_up" and items:
+        from app.services.chain_builder import normalize_subject as _ns
+        prior_stmt = (
+            select(Email)
+            .where(Email.from_email == rep_email, Email.chain_id.is_(None))
+            .order_by(Email.timestamp.asc())
+        )
+        prior_result = await session.execute(prior_stmt)
+        all_emails = prior_result.scalars().all()
+
+        seq_map: dict[tuple[str, str], list] = {}
+        for e in all_emails:
+            key = (e.to_email or "", _ns(e.subject))
+            seq_map.setdefault(key, []).append(e)
+
+        for item in items:
+            key = (item.to_email or "", _ns(item.subject))
+            seq = seq_map.get(key, [])
+            prev_ts = None
+            for e in seq:
+                if e.id == item.id:
+                    break
+                prev_ts = e.timestamp
+            if prev_ts and item.timestamp:
+                item.time_gap_seconds = (item.timestamp - prev_ts).total_seconds()
+            else:
+                item.time_gap_seconds = None
+
     return _paginate_result(list(items), total, page, per_page)
 
 

@@ -326,29 +326,16 @@ When database access is required (lookups, aggregation), accept a `Session` para
 
 #### Database
 
-Tests use in-memory SQLite (not PostgreSQL). Tables are created before each test and dropped after. This gives test isolation without the cost of a real database.
+Tests run against PostgreSQL, the same database engine used in production. This avoids type-mapping hacks and ensures queries behave identically in tests and production.
 
-If the production database uses PostgreSQL-specific types (e.g. `JSONB`), register a SQLAlchemy compiler extension to compile them as their SQLite equivalents (e.g. `JSON`).
-
-Enable foreign key enforcement in SQLite via `PRAGMA foreign_keys=ON` on each connection.
-
-Use `StaticPool` so all threads share one connection (required for in-memory SQLite with multithreaded test clients).
+A fresh async engine is created per test to avoid asyncpg event-loop binding issues. Tables are created before each test and dropped after for isolation. The test database connection string is set in `pytest.ini`.
 
 ```python
-from sqlalchemy import create_engine, event
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from app.config import settings
 
-engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-
-@event.listens_for(engine, "connect")
-def _set_sqlite_pragma(dbapi_conn, connection_record):
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+engine = create_async_engine(settings.DATABASE_URL)
+SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 ```
 
 #### Fixtures
@@ -476,9 +463,8 @@ class TestEntityAPI:
 Visual tests use a browser automation tool (Selenium/Playwright) to capture screenshots in a headless browser. They live in `scripts/` (not `tests/`) because they require browser dependencies not available in CI.
 
 Visual test setup:
-1. Create an in-memory SQLite database with the same compatibility patches as the test suite.
-2. Insert seed data via ORM.
-3. Override `get_db` on the app and start the server in a daemon thread.
+1. Connect to the test PostgreSQL database and seed data via sync psycopg2.
+2. Override `get_db` on the app and start the server in a daemon thread.
 4. Launch a headless browser, navigate to each page, resize viewport to full page height, capture screenshot.
 5. Save screenshots as PNG files.
 

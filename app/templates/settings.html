@@ -122,6 +122,14 @@
                 <button onclick="startOperation('chain-build')"
                         class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">Rebuild Chains</button>
             </div>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900">Classify Emails</h3>
+                    <p class="text-xs text-gray-500">Classify incoming emails as auto-replies or real responses.</p>
+                </div>
+                <button onclick="startOperation('classify')"
+                        class="rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700">Classify</button>
+            </div>
         </div>
 
         <!-- Recent Jobs -->
@@ -182,34 +190,34 @@
 
             <div class="space-y-4">
                 <div>
-                    <label for="chain_email_opening" class="block text-sm font-medium text-gray-700 mb-1">Opening Context</label>
-                    <textarea id="chain_email_opening" rows="3"
-                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.chain_email_prompt_blocks.opening if settings.chain_email_prompt_blocks else '' }}</textarea>
+                    <label for="followup_opening" class="block text-sm font-medium text-gray-700 mb-1">Opening Context</label>
+                    <textarea id="followup_opening" rows="3"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.follow_up_email_prompt_blocks.opening if settings.follow_up_email_prompt_blocks else '' }}</textarea>
                 </div>
                 <div>
-                    <label for="chain_email_value_proposition" class="block text-sm font-medium text-gray-700 mb-1">Value Proposition</label>
-                    <textarea id="chain_email_value_proposition" rows="2"
-                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.chain_email_prompt_blocks.value_proposition if settings.chain_email_prompt_blocks else '' }}</textarea>
+                    <label for="followup_value_proposition" class="block text-sm font-medium text-gray-700 mb-1">Value Proposition</label>
+                    <textarea id="followup_value_proposition" rows="2"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.follow_up_email_prompt_blocks.value_proposition if settings.follow_up_email_prompt_blocks else '' }}</textarea>
                 </div>
                 <div>
-                    <label for="chain_email_personalisation" class="block text-sm font-medium text-gray-700 mb-1">Personalisation</label>
-                    <textarea id="chain_email_personalisation" rows="2"
-                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.chain_email_prompt_blocks.personalisation if settings.chain_email_prompt_blocks else '' }}</textarea>
+                    <label for="followup_personalisation" class="block text-sm font-medium text-gray-700 mb-1">Personalisation</label>
+                    <textarea id="followup_personalisation" rows="2"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.follow_up_email_prompt_blocks.personalisation if settings.follow_up_email_prompt_blocks else '' }}</textarea>
                 </div>
                 <div>
-                    <label for="chain_email_cta" class="block text-sm font-medium text-gray-700 mb-1">CTA</label>
-                    <textarea id="chain_email_cta" rows="2"
-                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.chain_email_prompt_blocks.cta if settings.chain_email_prompt_blocks else '' }}</textarea>
+                    <label for="followup_cta" class="block text-sm font-medium text-gray-700 mb-1">CTA</label>
+                    <textarea id="followup_cta" rows="2"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.follow_up_email_prompt_blocks.cta if settings.follow_up_email_prompt_blocks else '' }}</textarea>
                 </div>
                 <div>
-                    <label for="chain_email_clarity" class="block text-sm font-medium text-gray-700 mb-1">Clarity</label>
-                    <textarea id="chain_email_clarity" rows="2"
-                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.chain_email_prompt_blocks.clarity if settings.chain_email_prompt_blocks else '' }}</textarea>
+                    <label for="followup_clarity" class="block text-sm font-medium text-gray-700 mb-1">Clarity</label>
+                    <textarea id="followup_clarity" rows="2"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.follow_up_email_prompt_blocks.clarity if settings.follow_up_email_prompt_blocks else '' }}</textarea>
                 </div>
                 <div>
-                    <label for="chain_email_closing" class="block text-sm font-medium text-gray-700 mb-1">Response Format</label>
-                    <textarea id="chain_email_closing" rows="3"
-                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.chain_email_prompt_blocks.closing if settings.chain_email_prompt_blocks else '' }}</textarea>
+                    <label for="followup_closing" class="block text-sm font-medium text-gray-700 mb-1">Response Format</label>
+                    <textarea id="followup_closing" rows="3"
+                              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono">{{ settings.follow_up_email_prompt_blocks.closing if settings.follow_up_email_prompt_blocks else '' }}</textarea>
                 </div>
             </div>
         </section>
@@ -521,13 +529,13 @@ document.getElementById('save-evaluation-btn').addEventListener('click', async (
             clarity: document.getElementById('initial_clarity').value,
             closing: document.getElementById('initial_closing').value,
         },
-        chain_email_prompt_blocks: {
-            opening: document.getElementById('chain_email_opening').value,
-            value_proposition: document.getElementById('chain_email_value_proposition').value,
-            personalisation: document.getElementById('chain_email_personalisation').value,
-            cta: document.getElementById('chain_email_cta').value,
-            clarity: document.getElementById('chain_email_clarity').value,
-            closing: document.getElementById('chain_email_closing').value,
+        follow_up_email_prompt_blocks: {
+            opening: document.getElementById('followup_opening').value,
+            value_proposition: document.getElementById('followup_value_proposition').value,
+            personalisation: document.getElementById('followup_personalisation').value,
+            cta: document.getElementById('followup_cta').value,
+            clarity: document.getElementById('followup_clarity').value,
+            closing: document.getElementById('followup_closing').value,
         },
         chain_evaluation_prompt_blocks: {
             opening: document.getElementById('chain_eval_opening').value,

@@ -9,6 +9,7 @@ from app.models.base import AuditMixin, Base
 
 EMAIL_DIMENSIONS = ["value_proposition", "personalisation", "cta", "clarity"]
 CHAIN_DIMENSIONS = ["progression", "responsiveness", "persistence", "conversation_quality"]
+CLASSIFIER_DIMENSIONS = ["email_type", "quoted_emails"]
 
 
 def assemble_prompt(blocks: dict, dimensions: list[str]) -> str:
@@ -47,3 +48,9 @@ class Settings(AuditMixin, Base):
     weight_personalisation: Mapped[float] = mapped_column(Float, default=0.30)
     weight_cta: Mapped[float] = mapped_column(Float, default=0.20)
     weight_clarity: Mapped[float] = mapped_column(Float, default=0.15)
+    classifier_prompt_blocks: Mapped[Optional[dict]] = mapped_column(
+        JSONB, default=None
+    )
+    follow_up_email_prompt_blocks: Mapped[Optional[dict]] = mapped_column(
+        JSONB, default=None
+    )

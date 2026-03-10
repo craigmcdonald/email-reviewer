@@ -137,7 +137,7 @@ class TestRepDetailPage:
         resp = await client.get("/reps/nobody@example.com")
         assert resp.status_code == 404
 
-    async def test_get_rep_detail_accepts_pagination_params(
+    async def test_get_rep_detail_accepts_prefixed_pagination_params(
         self, client, make_rep, make_email, make_score
     ):
         rep = await make_rep(email="alice@example.com", display_name="Alice")
@@ -145,22 +145,22 @@ class TestRepDetailPage:
             em = await make_email(from_email="alice@example.com", subject=f"Subj {i}")
             await make_score(email_id=em.id, overall=7)
         resp = await client.get(
-            "/reps/alice@example.com", params={"page": 1, "per_page": 20}
+            "/reps/alice@example.com", params={"o_page": 1, "o_per_page": 20}
         )
         assert resp.status_code == 200
 
-    async def test_search_filter_returns_200(
+    async def test_outreach_search_filter_returns_200(
         self, client, make_rep, make_email, make_score
     ):
         await make_rep(email="alice@example.com", display_name="Alice")
         e = await make_email(from_email="alice@example.com", subject="Hello world")
         await make_score(email_id=e.id, overall=7)
         resp = await client.get(
-            "/reps/alice@example.com", params={"search": "hello"}
+            "/reps/alice@example.com", params={"o_search": "hello"}
         )
         assert resp.status_code == 200
 
-    async def test_date_and_score_filters_return_200(
+    async def test_prefixed_date_and_score_filters_return_200(
         self, client, make_rep, make_email, make_score
     ):
         await make_rep(email="alice@example.com", display_name="Alice")
@@ -168,7 +168,7 @@ class TestRepDetailPage:
         await make_score(email_id=e.id, overall=7)
         resp = await client.get(
             "/reps/alice@example.com",
-            params={"date_from": "2024-01-01", "score_min": "5"},
+            params={"o_date_from": "2024-01-01", "o_score_min": "5"},
         )
         assert resp.status_code == 200
 
@@ -181,11 +181,11 @@ class TestRepDetailPage:
         resp = await client.get(
             "/reps/alice@example.com",
             params={
-                "search": "",
-                "date_from": "",
-                "date_to": "",
-                "score_min": "",
-                "score_max": "",
+                "o_search": "",
+                "o_date_from": "",
+                "o_date_to": "",
+                "o_score_min": "",
+                "o_score_max": "",
             },
         )
         assert resp.status_code == 200
@@ -200,89 +200,40 @@ class TestRepDetailPage:
         assert resp.status_code == 200
         assert "Outreach" in resp.text
 
-    async def test_rep_detail_shows_follow_up_section(
+    async def test_rep_detail_shows_follow_ups_section(
         self, client, make_rep, make_email, make_score
     ):
         await make_rep(email="alice@example.com", display_name="Alice")
-        e1 = await make_email(
-            from_email="alice@example.com", to_email="p@y.com",
-            subject="Hello", timestamp=datetime(2024, 1, 1),
-        )
-        await make_score(email_id=e1.id, overall=7)
-        e2 = await make_email(
-            from_email="alice@example.com", to_email="p@y.com",
-            subject="Hello", timestamp=datetime(2024, 1, 5),
-        )
-        await make_score(email_id=e2.id, overall=6)
         resp = await client.get("/reps/alice@example.com")
         assert resp.status_code == 200
-        assert "Follow-up" in resp.text
+        assert "Follow-ups" in resp.text
 
-    async def test_rep_detail_shows_unanswered_section(
-        self, client, make_rep, make_email, make_score, make_chain
+    async def test_rep_detail_shows_conversations_section(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "Conversations" in resp.text
+
+    async def test_rep_detail_conversations_filter_by_status(
+        self, client, make_rep, make_chain, make_email
     ):
         await make_rep(email="alice@example.com", display_name="Alice")
         chain = await make_chain(
-            normalized_subject="Prospect reply",
+            normalized_subject="Sales pitch",
             is_unanswered=True,
             incoming_count=1,
             outgoing_count=1,
         )
         await make_email(
-            from_email="alice@example.com", subject="Prospect reply",
-            chain_id=chain.id, position_in_chain=1,
-        )
-        resp = await client.get("/reps/alice@example.com")
-        assert resp.status_code == 200
-        assert "Unanswered Replies" in resp.text
-
-    async def test_rep_detail_shows_chains_section(
-        self, client, make_rep, make_email, make_score, make_chain
-    ):
-        await make_rep(email="alice@example.com", display_name="Alice")
-        chain = await make_chain(
-            normalized_subject="Sales pitch",
-            is_unanswered=False,
-            incoming_count=1,
-            outgoing_count=2,
-        )
-        await make_email(
             from_email="alice@example.com", subject="Sales pitch",
             chain_id=chain.id, position_in_chain=1,
         )
-        resp = await client.get("/reps/alice@example.com")
+        resp = await client.get(
+            "/reps/alice@example.com", params={"c_status": "unanswered"}
+        )
         assert resp.status_code == 200
-        assert "Chains" in resp.text
-
-    async def test_rep_detail_hides_follow_up_when_none(
-        self, client, make_rep, make_email, make_score
-    ):
-        await make_rep(email="alice@example.com", display_name="Alice")
-        e = await make_email(from_email="alice@example.com", subject="Unique topic")
-        await make_score(email_id=e.id, overall=7)
-        resp = await client.get("/reps/alice@example.com")
-        assert resp.status_code == 200
-        assert "Follow-up" not in resp.text
-
-    async def test_rep_detail_hides_unanswered_when_none(
-        self, client, make_rep, make_email, make_score
-    ):
-        await make_rep(email="alice@example.com", display_name="Alice")
-        e = await make_email(from_email="alice@example.com", subject="Test")
-        await make_score(email_id=e.id, overall=7)
-        resp = await client.get("/reps/alice@example.com")
-        assert resp.status_code == 200
-        assert "Unanswered Replies" not in resp.text
-
-    async def test_rep_detail_hides_chains_when_none(
-        self, client, make_rep, make_email, make_score
-    ):
-        await make_rep(email="alice@example.com", display_name="Alice")
-        e = await make_email(from_email="alice@example.com", subject="Test")
-        await make_score(email_id=e.id, overall=7)
-        resp = await client.get("/reps/alice@example.com")
-        assert resp.status_code == 200
-        assert "Chains" not in resp.text
 
 
 class TestChainDetailPage:
@@ -299,7 +250,7 @@ class TestChainDetailPage:
         resp = await client.get(f"/chains/{chain.id}")
         assert resp.status_code == 200
 
-    async def test_rep_detail_contains_chains_section(
+    async def test_rep_detail_contains_conversations_section(
         self, client, make_rep, make_chain, make_email, make_score
     ):
         await make_rep(email="alice@example.com", display_name="Alice")
@@ -314,11 +265,11 @@ class TestChainDetailPage:
         await make_score(email_id=e.id, overall=7)
         resp = await client.get("/reps/alice@example.com")
         assert resp.status_code == 200
-        assert "Chains" in resp.text
+        assert "Conversations" in resp.text
 
 
 class TestRepExport:
-    async def test_export_filtered_returns_xlsx(
+    async def test_export_outreach_filtered_returns_xlsx(
         self, client, make_rep, make_email, make_score
     ):
         await make_rep(email="alice@example.com", display_name="Alice")
@@ -326,7 +277,7 @@ class TestRepExport:
         await make_score(email_id=e.id, overall=7)
         resp = await client.get(
             "/reps/alice@example.com/export",
-            params={"export_all": "false", "search": "hello"},
+            params={"section": "outreach", "export_all": "false", "search": "hello"},
         )
         assert resp.status_code == 200
         assert (
@@ -342,7 +293,42 @@ class TestRepExport:
         await make_score(email_id=e.id, overall=7)
         resp = await client.get(
             "/reps/alice@example.com/export",
-            params={"export_all": "true"},
+            params={"section": "outreach", "export_all": "true"},
+        )
+        assert resp.status_code == 200
+        assert (
+            resp.headers["content-type"]
+            == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    async def test_export_follow_ups_returns_xlsx(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e = await make_email(from_email="alice@example.com", subject="Test")
+        await make_score(email_id=e.id, overall=7)
+        resp = await client.get(
+            "/reps/alice@example.com/export",
+            params={"section": "follow_ups", "export_all": "true"},
+        )
+        assert resp.status_code == 200
+        assert (
+            resp.headers["content-type"]
+            == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    async def test_export_conversations_returns_xlsx(
+        self, client, make_rep, make_chain, make_email
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        chain = await make_chain(normalized_subject="Test chain")
+        await make_email(
+            from_email="alice@example.com", subject="Test chain",
+            chain_id=chain.id, position_in_chain=1,
+        )
+        resp = await client.get(
+            "/reps/alice@example.com/export",
+            params={"section": "conversations", "export_all": "true"},
         )
         assert resp.status_code == 200
         assert (

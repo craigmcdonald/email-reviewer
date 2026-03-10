@@ -12,12 +12,13 @@ from app.models.job import Job
 from app.schemas.job import FetchRequest, JobResponse, LastRunResponse
 from app.services.job_runner import (
     run_chain_build_job,
+    run_classify_job,
     run_export_job,
     run_fetch_job,
     run_rescore_job,
     run_score_job,
 )
-from app.tasks import chain_build_task, export_task, fetch_task, rescore_task, score_task
+from app.tasks import chain_build_task, classify_task, export_task, fetch_task, rescore_task, score_task
 from app.worker import get_queue, validate_redis
 
 router = APIRouter(prefix="/api/operations")
@@ -197,6 +198,24 @@ async def start_chain_build(
         queue.enqueue(chain_build_task, job.job_id)
     else:
         background_tasks.add_task(run_chain_build_job, None, job.job_id)
+    return job
+
+
+@router.post("/classify", status_code=202, response_model=JobResponse)
+async def start_classify(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+):
+    queue = _validate_queue()
+    await _reap_stale_jobs(session)
+    await _check_no_running(session, [JobType.CLASSIFY])
+    job = await _create_job(session, JobType.CLASSIFY)
+    await session.commit()
+
+    if queue is not None:
+        queue.enqueue(classify_task, job.job_id)
+    else:
+        background_tasks.add_task(run_classify_job, None, job.job_id)
     return job
 
 

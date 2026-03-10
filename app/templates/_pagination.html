@@ -1,42 +1,73 @@
+{# Reusable pagination partial.
+   Expects: sec_total, sec_page, sec_per_page, sec_pages, sec_start, sec_end,
+            page_param, pp_param.
+   For backward compat (team page): uses total/page/per_page/etc if sec_ vars not set. #}
+
+{% if sec_total is not defined %}
+    {% set sec_total = total | default(0) %}
+    {% set sec_page = page | default(1) %}
+    {% set sec_per_page = per_page | default(20) %}
+    {% set sec_pages = pages | default(1) %}
+    {% set sec_start = start | default(1) %}
+    {% set sec_end = end | default(0) %}
+    {% set page_param = 'page' %}
+    {% set pp_param = 'per_page' %}
+{% endif %}
+
+{% if page_param is not defined %}
+    {% set page_param = 'page' %}
+    {% set pp_param = 'per_page' %}
+{% endif %}
+
+{# Build filter query string preserving all OTHER params from current URL #}
 {% set ns = namespace(filter_qs="") %}
-{% if search is defined and search %}{% set ns.filter_qs = ns.filter_qs ~ "&search=" ~ search %}{% endif %}
-{% if date_from is defined and date_from %}{% set ns.filter_qs = ns.filter_qs ~ "&date_from=" ~ date_from %}{% endif %}
-{% if date_to is defined and date_to %}{% set ns.filter_qs = ns.filter_qs ~ "&date_to=" ~ date_to %}{% endif %}
-{% if score_min is defined and score_min %}{% set ns.filter_qs = ns.filter_qs ~ "&score_min=" ~ score_min %}{% endif %}
-{% if score_max is defined and score_max %}{% set ns.filter_qs = ns.filter_qs ~ "&score_max=" ~ score_max %}{% endif %}
-{% if rep_type_filter is defined and rep_type_filter %}{% set ns.filter_qs = ns.filter_qs ~ "&rep_type=" ~ rep_type_filter %}{% endif %}
-{% if total > 0 %}
-<div class="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-600" id="pagination">
+{% if request is defined %}
+    {% for key, val in request.query_params.items() %}
+        {% if val and key != page_param and key != pp_param %}
+            {% set ns.filter_qs = ns.filter_qs ~ "&" ~ key ~ "=" ~ val %}
+        {% endif %}
+    {% endfor %}
+{% else %}
+    {% if search is defined and search %}{% set ns.filter_qs = ns.filter_qs ~ "&search=" ~ search %}{% endif %}
+    {% if date_from is defined and date_from %}{% set ns.filter_qs = ns.filter_qs ~ "&date_from=" ~ date_from %}{% endif %}
+    {% if date_to is defined and date_to %}{% set ns.filter_qs = ns.filter_qs ~ "&date_to=" ~ date_to %}{% endif %}
+    {% if score_min is defined and score_min %}{% set ns.filter_qs = ns.filter_qs ~ "&score_min=" ~ score_min %}{% endif %}
+    {% if score_max is defined and score_max %}{% set ns.filter_qs = ns.filter_qs ~ "&score_max=" ~ score_max %}{% endif %}
+    {% if rep_type_filter is defined and rep_type_filter %}{% set ns.filter_qs = ns.filter_qs ~ "&rep_type=" ~ rep_type_filter %}{% endif %}
+{% endif %}
+
+{% if sec_total > 0 %}
+<div class="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-600">
     <div>
-        {% if per_page %}
-        Showing {{ start }}-{{ end }} of {{ total }}
+        {% if sec_per_page %}
+        Showing {{ sec_start }}-{{ sec_end }} of {{ sec_total }}
         {% else %}
-        Showing all {{ total }}
+        Showing all {{ sec_total }}
         {% endif %}
     </div>
 
     <div class="flex items-center gap-2">
         <span class="mr-1">Per page:</span>
         {% for size in [20, 50, 100] %}
-        <a href="?page=1&per_page={{ size }}{{ ns.filter_qs }}"
-           class="px-2 py-1 rounded {{ 'bg-blue-600 text-white' if per_page == size else 'bg-gray-200 hover:bg-gray-300' }}">{{ size }}</a>
+        <a href="?{{ page_param }}=1&{{ pp_param }}={{ size }}{{ ns.filter_qs }}"
+           class="px-2 py-1 rounded {{ 'bg-blue-600 text-white' if sec_per_page == size else 'bg-gray-200 hover:bg-gray-300' }}">{{ size }}</a>
         {% endfor %}
-        <a href="?page=1&per_page=0{{ ns.filter_qs }}"
-           class="px-2 py-1 rounded {{ 'bg-blue-600 text-white' if per_page == 0 else 'bg-gray-200 hover:bg-gray-300' }}">All</a>
+        <a href="?{{ page_param }}=1&{{ pp_param }}=0{{ ns.filter_qs }}"
+           class="px-2 py-1 rounded {{ 'bg-blue-600 text-white' if sec_per_page == 0 else 'bg-gray-200 hover:bg-gray-300' }}">All</a>
     </div>
 
-    {% if per_page and pages > 1 %}
+    {% if sec_per_page and sec_pages > 1 %}
     <div class="flex items-center gap-2">
-        {% if page > 1 %}
-        <a href="?page={{ page - 1 }}&per_page={{ per_page }}{{ ns.filter_qs }}" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">&laquo; Previous</a>
+        {% if sec_page > 1 %}
+        <a href="?{{ page_param }}={{ sec_page - 1 }}&{{ pp_param }}={{ sec_per_page }}{{ ns.filter_qs }}" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">&laquo; Previous</a>
         {% else %}
         <span class="px-3 py-1 rounded bg-gray-100 text-gray-400">&laquo; Previous</span>
         {% endif %}
 
-        <span>Page {{ page }} of {{ pages }}</span>
+        <span>Page {{ sec_page }} of {{ sec_pages }}</span>
 
-        {% if page < pages %}
-        <a href="?page={{ page + 1 }}&per_page={{ per_page }}{{ ns.filter_qs }}" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Next &raquo;</a>
+        {% if sec_page < sec_pages %}
+        <a href="?{{ page_param }}={{ sec_page + 1 }}&{{ pp_param }}={{ sec_per_page }}{{ ns.filter_qs }}" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Next &raquo;</a>
         {% else %}
         <span class="px-3 py-1 rounded bg-gray-100 text-gray-400">Next &raquo;</span>
         {% endif %}

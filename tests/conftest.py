@@ -1,11 +1,8 @@
 import httpx
 import pytest
-from sqlalchemy import event
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.pool import StaticPool
 
+from app.config import settings as app_settings
 from app.database import get_db
 from app.main import app
 from app.models import ChainScore, Email, EmailChain, Job, Rep, Score, Settings  # noqa: F401 — registers tables
@@ -14,42 +11,32 @@ from scripts.seeds.settings import SETTINGS_SEED
 from tests.fixtures.hubspot import make_hubspot_email, make_hubspot_response
 
 
-@compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(element, compiler, **kw):
-    return "JSON"
+TestingSessionLocal = None
+_current_engine = None
 
 
-test_engine = create_async_engine(
-    "sqlite+aiosqlite://",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-
-
-@event.listens_for(test_engine.sync_engine, "connect")
-def _set_sqlite_pragma(dbapi_conn, connection_record):
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
-
-
-TestingSessionLocal = async_sessionmaker(
-    test_engine, class_=AsyncSession, expire_on_commit=False
-)
+def _get_session_factory():
+    return TestingSessionLocal
 
 
 @pytest.fixture(autouse=True)
 async def _setup_db():
-    async with test_engine.begin() as conn:
+    global _current_engine, TestingSessionLocal
+    _current_engine = create_async_engine(app_settings.DATABASE_URL)
+    TestingSessionLocal = async_sessionmaker(
+        _current_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with _current_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    # Seed settings row with prompt blocks and weights so every test has valid config
     async with TestingSessionLocal() as session:
         settings_row = Settings(id=1, **SETTINGS_SEED)
         session.add(settings_row)
         await session.commit()
     yield
-    async with test_engine.begin() as conn:
+    async with _current_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    await _current_engine.dispose()
 
 
 @pytest.fixture()

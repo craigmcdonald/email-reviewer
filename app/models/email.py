@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import AuditMixin, Base
@@ -35,6 +36,8 @@ class Email(AuditMixin, Base):
     message_id: Mapped[Optional[str]] = mapped_column(String, default=None)
     in_reply_to: Mapped[Optional[str]] = mapped_column(String, default=None)
     thread_id: Mapped[Optional[str]] = mapped_column(String, default=None)
+    is_auto_reply: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    quoted_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, default=None)
 
     score: Mapped[Optional["Score"]] = relationship(
         "Score",
