@@ -90,7 +90,7 @@ with Session(sync_engine) as session:
         from_email=REP_EMAIL, to_email=PROSPECT2_EMAIL,
         from_name="Zachary Bell", to_name="Unorthodox Roasters",
         subject="Your competition's already on campus",
-        body_text="Hi,\n\nDid you know your competitors are already running campaigns on campus?",
+        body_text="Hi,\n\nDid you know your competitors are already running campaigns on campus? We've seen a 40% increase in brand recall when students encounter products in their Students' Union.\n\nI'd love to share some data on what's working in the specialty coffee space right now.\n\nAll the best\nZachary\n\n--\n\nZachary Bell\nBusiness Development Manager\nNative Campus Advertising",
         direction="EMAIL", hubspot_id="out-3",
         timestamp=datetime(2026, 3, 2, 7, 0),
     )
@@ -369,7 +369,7 @@ print("Saved /tmp/rep_detail_expanded.png")
 
 # Click "View full email with signature" to open modal
 driver.execute_script("""
-    var btn = document.querySelector('.email-expand:not(.hidden) button[onclick*="openEmailModal"]');
+    var btn = document.querySelector('.detail-panel.open .full-email-link');
     if (btn) btn.click();
 """)
 time.sleep(0.5)

@@ -1,1 +1,33 @@
 @import "tailwindcss";
+
+/* Email expand panel */
+.detail-cell { padding: 0 !important; border-top: none !important; }
+.detail-panel { overflow: hidden; max-height: 0; transition: max-height 0.25s ease; }
+.detail-panel.open { max-height: 600px; }
+.detail-inner { padding: 16px 20px 20px; background: #f8fafc; border-top: 1px solid #eef0f2; }
+.email-row.expanded { background: #f8fafc; }
+
+/* AI notes callout */
+.ai-notes { border-left: 3px solid #3b82f6; background: #eff6ff; border-radius: 0 4px 4px 0; padding: 10px 12px; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start; }
+.ai-icon { width: 16px; height: 16px; color: #3b82f6; flex-shrink: 0; margin-top: 2px; }
+.ai-notes p { font-size: 13px; color: #1e3a5f; line-height: 1.5; }
+
+/* Email meta */
+.email-meta { display: flex; gap: 16px; font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+
+/* Scrollable email body */
+.email-body-scroll { max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; border: 1px solid #e5e7eb; border-radius: 4px; padding: 12px; background: #fff; }
+.email-body-scroll::-webkit-scrollbar { width: 4px; }
+.email-body-scroll::-webkit-scrollbar-track { background: transparent; }
+.email-body-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+.email-body-text { font-size: 13px; color: #4b5563; white-space: pre-wrap; font-family: inherit; line-height: 1.55; margin: 0; }
+
+/* Subtle full email link */
+.full-email-link { display: inline-block; margin-top: 8px; font-size: 12px; color: #6b7280; text-decoration: none; cursor: pointer; }
+.full-email-link:hover { color: #2563eb; text-decoration: underline; }
+
+/* Chevron */
+.chevron { width: 16px; height: 16px; color: #9ca3af; transition: transform 0.15s; flex-shrink: 0; }
+.email-row.expanded .chevron { transform: rotate(90deg); }
+.subject-cell { display: flex; align-items: center; gap: 8px; }
+.subject-text { color: #2563eb; font-weight: 500; }
