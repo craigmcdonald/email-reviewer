@@ -25,6 +25,7 @@ class ScoringResult(BaseModel):
     value_proposition: int
     cta: int
     notes: str
+    tokens: dict = {}
 
     @field_validator(*SCORE_FIELDS)
     @classmethod

@@ -11,7 +11,7 @@ Stores email data fetched from HubSpot.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | id | Integer | PK, auto-increment | |
-| hubspot_id | String | NOT NULL | HubSpot email ID, used for upsert deduplication |
+| hubspot_id | String | NOT NULL, UNIQUE, INDEXED | HubSpot email ID, used for upsert deduplication |
 | timestamp | DateTime | | When the email was sent |
 | from_name | String | | Sender display name |
 | from_email | String | NOT NULL | Sender address |

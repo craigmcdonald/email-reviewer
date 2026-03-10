@@ -4,13 +4,14 @@ import asyncio
 import json
 import logging
 import math
-from datetime import datetime
+from dataclasses import dataclass, field
 
 from anthropic import AsyncAnthropic, RateLimitError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.models.base import _utcnow
 from app.models.chain import EmailChain
 from app.models.chain_score import ChainScore
 from app.models.email import Email
@@ -28,6 +29,16 @@ from app.schemas.score import ScoringResult
 from app.services.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EmailScoringContext:
+    """Wraps an Email with scoring-pipeline metadata."""
+    email: Email
+    rep_type: str | None = None
+    chain_context: str = ""
+    follow_up_context: str = ""
+    is_follow_up: bool = False
 
 MAX_BODY_LENGTH = 4000
 MAX_CHAIN_EMAIL_LENGTH = 2000
@@ -48,8 +59,9 @@ def _calculate_weighted_overall(scores: dict, weights: dict) -> int:
     return max(1, min(10, rounded))
 
 
-def _build_user_message(email: Email, rep_type: str | None = None) -> str:
+def _build_user_message(ctx: EmailScoringContext) -> str:
     """Format email metadata and body into a prompt string for Claude."""
+    email = ctx.email
     body = email.body_text or ""
     if len(body) > MAX_BODY_LENGTH:
         body = body[:MAX_BODY_LENGTH]
@@ -65,18 +77,16 @@ def _build_user_message(email: Email, rep_type: str | None = None) -> str:
     parts = []
 
     # Include rep role context when available
-    if rep_type:
-        parts.append(f"Rep role: {rep_type}")
+    if ctx.rep_type:
+        parts.append(f"Rep role: {ctx.rep_type}")
 
     # Include chain context for chain follow-up emails
-    chain_context = getattr(email, "_chain_context", None)
-    if chain_context and (email.position_in_chain or 0) > 1:
-        parts.append(f"Previous conversation:\n{chain_context}\n")
+    if ctx.chain_context and (email.position_in_chain or 0) > 1:
+        parts.append(f"Previous conversation:\n{ctx.chain_context}\n")
 
     # Include follow-up context for unchained follow-up emails
-    follow_up_context = getattr(email, "_follow_up_context", None)
-    if follow_up_context:
-        parts.append(f"Previous emails in sequence:\n{follow_up_context}\n")
+    if ctx.follow_up_context:
+        parts.append(f"Previous emails in sequence:\n{ctx.follow_up_context}\n")
 
     parts.append(
         f"From: {from_str}\n"
@@ -240,27 +250,20 @@ async def _call_claude_with_retry(
 
 async def _score_single_email(
     client: AsyncAnthropic,
-    email: Email,
+    ctx: EmailScoringContext,
     semaphore: asyncio.Semaphore,
     settings: Settings,
-    rep_type: str | None = None,
 ) -> ScoringResult | None:
     """Call Claude to score one email. Retry once on parse failure.
 
     Retries with exponential backoff on rate limit (429) errors.
     Returns a ScoringResult on success or None if both parse attempts fail.
     """
-    # Build chain context for follow-up emails
-    chain_context = getattr(email, "_chain_context", "")
-    if chain_context and (email.position_in_chain or 0) > 1:
-        pass  # already set
-    email._chain_context = chain_context
-
-    user_message = _build_user_message(email, rep_type=rep_type)
+    email = ctx.email
+    user_message = _build_user_message(ctx)
 
     # Choose prompt based on email type
-    is_follow_up = getattr(email, "_is_follow_up", False)
-    if is_follow_up:
+    if ctx.is_follow_up:
         blocks = settings.follow_up_email_prompt_blocks or settings.initial_email_prompt_blocks
     elif email.chain_id is not None and (email.position_in_chain or 0) > 1:
         blocks = settings.chain_email_prompt_blocks
@@ -281,8 +284,7 @@ async def _score_single_email(
 
             try:
                 raw = json.loads(response.content[0].text)
-                result = ScoringResult(**raw)
-                result._tokens = total_tokens
+                result = ScoringResult(**raw, tokens=total_tokens)
                 return result
             except (json.JSONDecodeError, ValueError, KeyError):
                 continue
@@ -388,34 +390,33 @@ async def score_unscored_emails(
 
                 semaphore = asyncio.Semaphore(batch_size)
 
+                contexts: list[EmailScoringContext] = []
                 for email in emails:
-                    email._chain_context = await _build_chain_context(session, email)
-                    email._rep_type = batch_rep_types[email.id]
-                    # Detect follow-ups: no chain_id, has follow-up context
+                    chain_context = await _build_chain_context(session, email)
+                    follow_up_context = ""
+                    is_follow_up = False
                     if email.chain_id is None:
                         fu_context = await _build_follow_up_context(session, email)
                         if fu_context:
-                            email._follow_up_context = fu_context
-                            email._is_follow_up = True
-                        else:
-                            email._follow_up_context = ""
-                            email._is_follow_up = False
-                    else:
-                        email._follow_up_context = ""
-                        email._is_follow_up = False
+                            follow_up_context = fu_context
+                            is_follow_up = True
+                    contexts.append(EmailScoringContext(
+                        email=email,
+                        rep_type=batch_rep_types[email.id],
+                        chain_context=chain_context,
+                        follow_up_context=follow_up_context,
+                        is_follow_up=is_follow_up,
+                    ))
 
                 tasks = [
-                    _score_single_email(
-                        client, email, semaphore, settings,
-                        rep_type=email._rep_type,
-                    )
-                    for email in emails
+                    _score_single_email(client, ctx, semaphore, settings)
+                    for ctx in contexts
                 ]
                 results = await asyncio.gather(*tasks)
 
-                for email, scoring_result in zip(emails, results):
+                for ctx, scoring_result in zip(contexts, results):
+                    email = ctx.email
                     if scoring_result is not None:
-                        tokens = getattr(scoring_result, "_tokens", {})
                         dimension_scores = {
                             "value_proposition": scoring_result.value_proposition,
                             "personalisation": scoring_result.personalisation,
@@ -432,17 +433,17 @@ async def score_unscored_emails(
                             overall=overall,
                             notes=scoring_result.notes,
                             score_error=False,
-                            scored_at=datetime.utcnow(),
+                            scored_at=_utcnow(),
                         )
                         session.add(score)
                         summary["scored"] += 1
-                        summary["total_input_tokens"] += tokens.get("input", 0)
-                        summary["total_output_tokens"] += tokens.get("output", 0)
+                        summary["total_input_tokens"] += scoring_result.tokens.get("input", 0)
+                        summary["total_output_tokens"] += scoring_result.tokens.get("output", 0)
                     else:
                         score = Score(
                             email_id=email.id,
                             score_error=True,
-                            scored_at=datetime.utcnow(),
+                            scored_at=_utcnow(),
                         )
                         session.add(score)
                         summary["errors"] += 1
@@ -620,7 +621,7 @@ async def score_unscored_chains(
                         avg_response_hours=avg_hours,
                         notes=scoring_result.notes,
                         score_error=False,
-                        scored_at=datetime.utcnow(),
+                        scored_at=_utcnow(),
                     )
                     session.add(chain_score)
                     summary["chains_scored"] += 1
@@ -628,7 +629,7 @@ async def score_unscored_chains(
                     chain_score = ChainScore(
                         chain_id=chain_id,
                         score_error=True,
-                        scored_at=datetime.utcnow(),
+                        scored_at=_utcnow(),
                     )
                     session.add(chain_score)
                     summary["errors"] += 1

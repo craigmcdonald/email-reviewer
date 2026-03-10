@@ -1,14 +1,16 @@
 """Groups emails into conversation chains using message headers, thread IDs, and subject matching."""
 
 import re
-from collections import defaultdict
-from datetime import datetime, timedelta
+from collections import Counter, defaultdict
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.enums import EmailDirection
 from app.models.chain import EmailChain
+from app.models.chain_score import ChainScore
 from app.models.email import Email
 
 _PREFIX_PATTERN = re.compile(r"^(?:(Re|RE|Fwd|FW|Fw):\s*|Email:\s*>>\s*)")
@@ -96,16 +98,8 @@ async def build_chains(session: AsyncSession) -> dict:
 
     # Pass 3: subject normalization + participant overlap + time proximity
     # Only for emails still in singleton groups
-    def is_unchained(e: Email) -> bool:
-        eid = e.id
-        root = find(eid)
-        # Check if this email is alone in its group
-        for other in emails:
-            if other.id != eid and find(other.id) == root:
-                return False
-        return True
-
-    unchained = [e for e in emails if is_unchained(e)]
+    root_counts: Counter[int] = Counter(find(e.id) for e in emails)
+    unchained = [e for e in emails if root_counts[find(e.id)] == 1]
 
     # Group unchained emails by normalized subject
     subject_groups: dict[str, list[Email]] = defaultdict(list)
@@ -163,16 +157,31 @@ async def build_chains(session: AsyncSession) -> dict:
     chains_updated = 0
     emails_linked = 0
 
-    # Load existing chains for potential reuse
+    # Load existing chains (with their scores) for potential reuse
     existing_chains: dict[int, EmailChain] = {}
     if existing_chain_ids:
         chain_result = await session.execute(
-            select(EmailChain).where(EmailChain.id.in_(existing_chain_ids))
+            select(EmailChain)
+            .options(joinedload(EmailChain.chain_score))
+            .where(EmailChain.id.in_(existing_chain_ids))
         )
-        for c in chain_result.scalars().all():
+        for c in chain_result.unique().scalars().all():
             existing_chains[c.id] = c
 
-    # Delete existing chains and recreate (simpler for idempotency)
+    # Preserve chain scores keyed by (normalized_subject, participants) so they
+    # survive the chain delete-and-recreate cycle.
+    saved_scores: dict[tuple[str, str], ChainScore] = {}
+    for chain in existing_chains.values():
+        if chain.chain_score is not None:
+            score = chain.chain_score
+            key = (chain.normalized_subject or "", chain.participants or "")
+            # Detach the score from the chain so cascade delete doesn't remove it
+            chain.chain_score = None
+            score.chain_id = None  # temporarily orphan
+            saved_scores[key] = score
+    await session.flush()
+
+    # Delete existing chains (scores are already detached)
     for chain in existing_chains.values():
         await session.delete(chain)
     await session.flush()
@@ -220,6 +229,12 @@ async def build_chains(session: AsyncSession) -> dict:
         session.add(chain)
         await session.flush()
 
+        # Re-associate a saved chain score if one matches
+        score_key = (chain.normalized_subject or "", chain.participants or "")
+        if score_key in saved_scores:
+            saved_score = saved_scores.pop(score_key)
+            saved_score.chain_id = chain.id
+
         chains_created += 1
 
         for pos, e in enumerate(group_emails, start=1):
@@ -232,6 +247,10 @@ async def build_chains(session: AsyncSession) -> dict:
         if e.is_auto_reply and e.chain_id is not None:
             e.chain_id = None
             e.position_in_chain = None
+
+    # Delete orphaned scores whose chains no longer exist
+    for orphaned_score in saved_scores.values():
+        await session.delete(orphaned_score)
 
     await session.flush()
 

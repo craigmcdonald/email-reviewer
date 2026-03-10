@@ -1,5 +1,6 @@
 """Fetch emails from HubSpot and upsert into the database."""
 
+import json as _json
 import time
 from datetime import datetime
 from typing import Optional
@@ -8,6 +9,7 @@ import requests
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.base import _utcnow
 from app.models.email import Email
 from app.models.rep import Rep
 
@@ -196,8 +198,6 @@ def _fetch_single_page(headers: dict, body: dict) -> dict:
             continue
         elif resp.status_code != 200:
             # 4xx client errors (except 429) are permanent — fail immediately
-            import json as _json
-
             raise RuntimeError(
                 f"HubSpot API request failed with HTTP {resp.status_code}\n"
                 f"Response: {resp.text[:500]}\n"
@@ -206,8 +206,6 @@ def _fetch_single_page(headers: dict, body: dict) -> dict:
 
         break
     else:
-        import json as _json
-
         raise RuntimeError(
             f"HubSpot API request failed after {MAX_RETRIES} retries "
             f"(HTTP {resp.status_code})\n"
@@ -324,16 +322,35 @@ async def upsert_emails_to_db(
 
     Returns the number of emails upserted.
     """
-    count = 0
-    for raw in emails:
-        parsed = _parse_email(raw)
-        hubspot_id = parsed["id"]
+    if not emails:
+        return 0
 
-        # Upsert email
-        result = await session.execute(
-            select(Email).where(Email.hubspot_id == hubspot_id)
+    parsed_emails = [_parse_email(raw) for raw in emails]
+
+    # Batch-fetch existing emails by hubspot_id
+    hubspot_ids = [p["id"] for p in parsed_emails]
+    result = await session.execute(
+        select(Email).where(Email.hubspot_id.in_(hubspot_ids))
+    )
+    existing_by_hid: dict[str, Email] = {
+        e.hubspot_id: e for e in result.scalars().all()
+    }
+
+    # Batch-fetch existing reps
+    rep_from_emails = {
+        p["from_email"] for p in parsed_emails
+        if p["direction"] == "EMAIL" and p["from_email"]
+    }
+    known_reps: set[str] = set()
+    if rep_from_emails:
+        rep_result = await session.execute(
+            select(Rep.email).where(Rep.email.in_(rep_from_emails))
         )
-        existing = result.scalar_one_or_none()
+        known_reps = {row[0] for row in rep_result.all()}
+
+    count = 0
+    for parsed in parsed_emails:
+        hubspot_id = parsed["id"]
 
         field_values = {
             "timestamp": parsed["timestamp"],
@@ -352,13 +369,14 @@ async def upsert_emails_to_db(
             "thread_id": parsed["thread_id"],
         }
 
+        existing = existing_by_hid.get(hubspot_id)
         if existing:
             for key, value in field_values.items():
                 setattr(existing, key, value)
         else:
             email = Email(
                 hubspot_id=hubspot_id,
-                fetched_at=datetime.utcnow(),
+                fetched_at=_utcnow(),
                 **field_values,
             )
             session.add(email)
@@ -366,16 +384,13 @@ async def upsert_emails_to_db(
         # Auto-create rep only for outgoing emails
         if parsed["direction"] == "EMAIL":
             from_email = parsed["from_email"]
-            if from_email:
-                rep_result = await session.execute(
-                    select(Rep).where(Rep.email == from_email)
+            if from_email and from_email not in known_reps:
+                rep = Rep(
+                    email=from_email,
+                    display_name=parsed["from_name"] or from_email,
                 )
-                if not rep_result.scalar_one_or_none():
-                    rep = Rep(
-                        email=from_email,
-                        display_name=parsed["from_name"] or from_email,
-                    )
-                    session.add(rep)
+                session.add(rep)
+                known_reps.add(from_email)
 
         count += 1
 

@@ -15,6 +15,7 @@ from app.models.settings import (
 )
 from scripts.seeds.settings import SETTINGS_SEED
 from app.services.scorer import (
+    EmailScoringContext,
     _build_chain_context,
     _build_user_message,
     _calculate_weighted_overall,
@@ -175,7 +176,7 @@ class TestPromptLoading:
         mock_client = _make_mock_client(valid_response)
         semaphore = asyncio.Semaphore(5)
 
-        await _score_single_email(mock_client, email, semaphore, settings)
+        await _score_single_email(mock_client, EmailScoringContext(email=email), semaphore, settings)
 
         call_kwargs = mock_client.messages.create.call_args
         system_text = call_kwargs.kwargs["system"][0]["text"]
@@ -218,7 +219,7 @@ class TestPromptLoading:
         mock_client = _make_mock_client(valid_response)
         semaphore = asyncio.Semaphore(5)
 
-        await _score_single_email(mock_client, email, semaphore, settings)
+        await _score_single_email(mock_client, EmailScoringContext(email=email), semaphore, settings)
 
         call_kwargs = mock_client.messages.create.call_args
         system_text = call_kwargs.kwargs["system"][0]["text"]
@@ -237,7 +238,7 @@ class TestBuildUserMessage:
             body_text="This is the body.",
             timestamp=datetime(2026, 3, 1, 12, 0, 0),
         )
-        result = _build_user_message(email)
+        result = _build_user_message(EmailScoringContext(email=email))
         assert "alice@example.com" in result
         assert "bob@example.com" in result
         assert "Hello Bob" in result
@@ -251,13 +252,13 @@ class TestBuildUserMessage:
     def test_truncates_body_over_4000_chars(self):
         long_body = "x" * 5000
         email = Email(from_email="a@b.com", body_text=long_body)
-        result = _build_user_message(email)
+        result = _build_user_message(EmailScoringContext(email=email))
         assert "x" * 4000 in result
         assert "x" * 4001 not in result
 
     def test_handles_none_body_text(self):
         email = Email(from_email="a@b.com", body_text=None)
-        result = _build_user_message(email)
+        result = _build_user_message(EmailScoringContext(email=email))
         assert "Body:" in result
 
     def test_includes_chain_context_for_followup(self):
@@ -267,8 +268,8 @@ class TestBuildUserMessage:
             position_in_chain=2,
             chain_id=1,
         )
-        email._chain_context = "Previous email content"
-        result = _build_user_message(email)
+        ctx = EmailScoringContext(email=email, chain_context="Previous email content")
+        result = _build_user_message(ctx)
         assert "Previous conversation" in result
         assert "Previous email content" in result
 
@@ -278,7 +279,7 @@ class TestBuildUserMessage:
             body_text="First body",
             position_in_chain=1,
         )
-        result = _build_user_message(email)
+        result = _build_user_message(EmailScoringContext(email=email))
         assert "Previous conversation" not in result
 
     def test_no_chain_context_when_no_position(self):
@@ -287,17 +288,17 @@ class TestBuildUserMessage:
             body_text="Solo body",
             position_in_chain=None,
         )
-        result = _build_user_message(email)
+        result = _build_user_message(EmailScoringContext(email=email))
         assert "Previous conversation" not in result
 
     def test_includes_rep_type_when_provided(self):
         email = Email(from_email="a@b.com", body_text="Some body")
-        result = _build_user_message(email, rep_type="SDR")
+        result = _build_user_message(EmailScoringContext(email=email, rep_type="SDR"))
         assert "Rep role: SDR" in result
 
     def test_no_rep_role_when_type_not_provided(self):
         email = Email(from_email="a@b.com", body_text="Some body")
-        result = _build_user_message(email)
+        result = _build_user_message(EmailScoringContext(email=email))
         assert "Rep role:" not in result
 
 
@@ -375,10 +376,10 @@ class TestScoreSingleEmail:
             "value_proposition": 6, "cta": 5, "notes": "Good email.",
         })
         mock_client = _make_mock_client(valid_response)
-        email = Email(id=1, from_email="a@b.com", body_text="Hello there")
+        ctx = EmailScoringContext(email=Email(id=1, from_email="a@b.com", body_text="Hello there"))
         semaphore = asyncio.Semaphore(5)
 
-        result = await _score_single_email(mock_client, email, semaphore, settings)
+        result = await _score_single_email(mock_client, ctx, semaphore, settings)
 
         assert result is not None
         assert result.personalisation == 7
@@ -404,10 +405,10 @@ class TestScoreSingleEmail:
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(side_effect=[garbage_message, valid_message])
 
-        email = Email(id=2, from_email="a@b.com", body_text="Test body")
+        ctx = EmailScoringContext(email=Email(id=2, from_email="a@b.com", body_text="Test body"))
         semaphore = asyncio.Semaphore(5)
 
-        result = await _score_single_email(mock_client, email, semaphore, settings)
+        result = await _score_single_email(mock_client, ctx, semaphore, settings)
 
         assert result is not None
         assert result.personalisation == 5
@@ -422,10 +423,10 @@ class TestScoreSingleEmail:
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(return_value=garbage_message)
 
-        email = Email(id=3, from_email="a@b.com", body_text="Test body")
+        ctx = EmailScoringContext(email=Email(id=3, from_email="a@b.com", body_text="Test body"))
         semaphore = asyncio.Semaphore(5)
 
-        result = await _score_single_email(mock_client, email, semaphore, settings)
+        result = await _score_single_email(mock_client, ctx, semaphore, settings)
 
         assert result is None
         assert mock_client.messages.create.call_count == 2
@@ -447,10 +448,10 @@ class TestScoreSingleEmail:
             ]
         )
 
-        email = Email(id=4, from_email="a@b.com", body_text="Test body content")
+        ctx = EmailScoringContext(email=Email(id=4, from_email="a@b.com", body_text="Test body content"))
         semaphore = asyncio.Semaphore(5)
 
-        result = await _score_single_email(mock_client, email, semaphore, settings)
+        result = await _score_single_email(mock_client, ctx, semaphore, settings)
 
         assert result is not None
         assert result.personalisation == 7
@@ -475,10 +476,10 @@ class TestScoreSingleEmail:
             ]
         )
 
-        email = Email(id=6, from_email="a@b.com", body_text="Test body content")
+        ctx = EmailScoringContext(email=Email(id=6, from_email="a@b.com", body_text="Test body content"))
         semaphore = asyncio.Semaphore(5)
 
-        result = await _score_single_email(mock_client, email, semaphore, settings)
+        result = await _score_single_email(mock_client, ctx, semaphore, settings)
 
         assert result is not None
         mock_sleep.assert_called_once_with(DEFAULT_RETRY_AFTER)
@@ -493,10 +494,10 @@ class TestScoreSingleEmail:
             )
         )
 
-        email = Email(id=5, from_email="a@b.com", body_text="Test body content")
+        ctx = EmailScoringContext(email=Email(id=5, from_email="a@b.com", body_text="Test body content"))
         semaphore = asyncio.Semaphore(5)
 
-        result = await _score_single_email(mock_client, email, semaphore, settings)
+        result = await _score_single_email(mock_client, ctx, semaphore, settings)
 
         assert result is None
 
