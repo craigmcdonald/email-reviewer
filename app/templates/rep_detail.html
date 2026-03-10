@@ -89,7 +89,7 @@
                 <td class="px-6 py-4">
                     <details>
                         <summary class="cursor-pointer text-blue-600 hover:underline">{{ email.subject or "(no subject)" }}</summary>
-                        <div class="mt-3 space-y-3">
+                        <div class="mt-3 space-y-3" style="min-width:600px">
                             {% if email.score and email.score.notes %}
                             <div class="border-l-4 border-blue-500 bg-blue-50 rounded-r-lg pl-4 pr-4 py-3 flex gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -102,8 +102,8 @@
                                 From: {{ email.from_name or email.from_email }}
                                 &nbsp;&nbsp;To: {{ email.to_name or email.to_email or "—" }}
                             </p>
-                            <div class="border border-gray-200 rounded-lg p-4">
-                                <pre class="text-sm text-gray-700 whitespace-pre-wrap max-w-xl">{{ (email.body_text or "")[:500] }}</pre>
+                            <div class="border border-gray-200 rounded-lg p-4 overflow-y-auto" style="max-height:200px">
+                                <pre class="text-sm text-gray-700 whitespace-pre-wrap">{{ (email.body_text or "") | strip_signature }}</pre>
                             </div>
                             <button type="button" onclick="openEmailModal(this)" class="text-sm text-gray-500 hover:text-blue-600 hover:underline"
                                     data-subject="{{ email.subject or '(no subject)' }}"

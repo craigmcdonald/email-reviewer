@@ -1,4 +1,5 @@
 import hashlib
+import re
 from pathlib import Path
 
 from starlette.templating import Jinja2Templates
@@ -18,4 +19,10 @@ def _static_url(filename: str) -> str:
     return f"/static/{filename}"
 
 
+def _strip_signature(text: str) -> str:
+    """Remove email signature block starting at a common delimiter line."""
+    return re.split(r"\n-- ?\n", text, maxsplit=1)[0]
+
+
 templates.env.globals["static_url"] = _static_url
+templates.env.filters["strip_signature"] = _strip_signature
