@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Optional
+from typing import Optional, Union
 
 from sqlalchemy import CheckConstraint, Date, Float, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -10,6 +10,7 @@ from app.models.base import AuditMixin, Base
 EMAIL_DIMENSIONS = ["value_proposition", "personalisation", "cta", "clarity"]
 CHAIN_DIMENSIONS = ["progression", "responsiveness", "persistence", "conversation_quality"]
 CLASSIFIER_DIMENSIONS = ["email_type", "quoted_emails"]
+THREAD_SPLITTER_DIMENSIONS = ["messages"]
 
 
 def assemble_prompt(blocks: dict, dimensions: list[str]) -> str:
@@ -52,5 +53,11 @@ class Settings(AuditMixin, Base):
         JSONB, default=None
     )
     follow_up_email_prompt_blocks: Mapped[Optional[dict]] = mapped_column(
+        JSONB, default=None
+    )
+    thread_splitter_prompt_blocks: Mapped[Optional[dict]] = mapped_column(
+        JSONB, default=None
+    )
+    thread_split_indicators: Mapped[Optional[Union[list, dict]]] = mapped_column(
         JSONB, default=None
     )

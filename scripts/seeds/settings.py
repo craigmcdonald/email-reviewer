@@ -43,6 +43,12 @@ SETTINGS_SEED = {
         "quoted_emails": '**quoted_emails** — Extract metadata from any quoted or forwarded emails embedded in the body. For each quoted email found, extract: "from_email", "subject", "date" (if available). Return as a JSON array. Return an empty array if no quoted emails are found.',
         "closing": 'Respond with ONLY a JSON object in this exact format, no other text:\n{\n  "email_type": "<one of: real_email, auto_reply, bounce, calendar, newsletter, not_sales>",\n  "quoted_emails": [{"from_email": "<email>", "subject": "<subject>", "date": "<date or null>"}]\n}',
     },
+    "thread_splitter_prompt_blocks": {
+        "opening": "You are an email thread parser. The following text is the body of an email that contains one or more quoted or forwarded messages. Split it into individual messages.",
+        "messages": '**messages** — Identify every individual message in the thread. For each message extract: "from_name" (or null), "from_email", "to_name" (or null), "to_email" (or null), "date" (ISO 8601 string or null if not available), "subject" (or null), "body_text" (only that message\'s own content, stripped of signatures, disclaimers, and further quoting). The first element must be the top-level message (the actual email that was sent, not a quoted reply).',
+        "closing": 'Return the result as a JSON array ordered newest-first (the top-level message first). Respond with ONLY valid JSON, no other text:\n[\n  {"from_name": "...", "from_email": "...", "to_name": "...", "to_email": "...", "date": "...", "subject": "...", "body_text": "..."},\n  ...\n]',
+    },
+    "thread_split_indicators": ["From:", "wrote:", "Original Message", "Sent:"],
     "weight_value_proposition": 0.35,
     "weight_personalisation": 0.30,
     "weight_cta": 0.20,
