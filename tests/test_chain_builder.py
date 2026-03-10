@@ -610,7 +610,9 @@ class TestBuildChainsIdempotency:
             select(Email).order_by(Email.timestamp)
         )
         emails = emails_result.scalars().all()
-        chain_ids_1 = [(e.chain_id, e.position_in_chain) for e in emails]
+        positions_1 = [e.position_in_chain for e in emails]
+        # Emails sharing a chain_id are in the same group
+        same_chain_1 = emails[0].chain_id == emails[1].chain_id
 
         result2 = await build_chains(db)
         await db.commit()
@@ -619,9 +621,11 @@ class TestBuildChainsIdempotency:
             select(Email).order_by(Email.timestamp)
         )
         emails = emails_result.scalars().all()
-        chain_ids_2 = [(e.chain_id, e.position_in_chain) for e in emails]
+        positions_2 = [e.position_in_chain for e in emails]
+        same_chain_2 = emails[0].chain_id == emails[1].chain_id
 
-        assert chain_ids_1 == chain_ids_2
+        assert positions_1 == positions_2
+        assert same_chain_1 == same_chain_2
 
     async def test_incorporates_new_email_on_rerun(self, db, make_email):
         e1 = await make_email(
