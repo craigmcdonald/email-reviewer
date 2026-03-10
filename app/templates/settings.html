@@ -94,7 +94,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <h3 class="text-sm font-medium text-gray-900">Score Unscored</h3>
-                    <p class="text-xs text-gray-500">Score all emails without a score record.</p>
+                    <p class="text-xs text-gray-500">Score all unscored emails and conversation chains.</p>
                 </div>
                 <button onclick="startOperation('score')"
                         class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">Score</button>
@@ -427,8 +427,10 @@ function formatSummary(summary) {
     if (!summary) return '';
     const parts = [];
     if (summary.fetched != null) parts.push(`Fetched ${summary.fetched} emails`);
-    if (summary.scored != null) parts.push(`scored ${summary.scored}`);
+    if (summary.scored != null) parts.push(`scored ${summary.scored} emails`);
+    if (summary.chains_scored != null) parts.push(`scored ${summary.chains_scored} chains`);
     if (summary.errors != null && summary.errors > 0) parts.push(`${summary.errors} errors`);
+    if (summary.chain_errors != null && summary.chain_errors > 0) parts.push(`${summary.chain_errors} chain errors`);
     if (summary.new_reps != null && summary.new_reps > 0) parts.push(`${summary.new_reps} new reps`);
     if (summary.output_path) parts.push(`Export: ${summary.output_path}`);
     return parts.join(', ');
