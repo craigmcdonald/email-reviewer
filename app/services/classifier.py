@@ -1,4 +1,4 @@
-"""Classify incoming emails as auto-replies or real emails using pattern matching and Haiku."""
+"""Classify emails as auto-replies, non-sales, or real emails using pattern matching and Haiku."""
 
 import asyncio
 import json
@@ -76,11 +76,12 @@ async def _call_haiku_with_retry(
 async def classify_emails(
     session: AsyncSession, batch_size: int = 10
 ) -> dict:
-    """Classify unclassified incoming emails.
+    """Classify unclassified emails (both incoming and outgoing).
 
     Processes in two phases following the batch-commit pattern:
-    1. Pattern matching pass: batch-committed subject pattern checks.
-    2. Haiku API pass: batch-committed API classification for remaining.
+    1. Pattern matching pass: subject pattern checks for incoming emails only.
+    2. Haiku API pass: AI classification for all remaining unclassified emails,
+       including outgoing emails that may be internal/non-sales communications.
 
     Each batch re-queries fresh ORM objects and commits independently so
     completed work survives crashes.
@@ -95,9 +96,12 @@ async def classify_emails(
     }
 
     # Phase 1: collect IDs and subjects for pattern matching (no ORM objects held)
+    # Classify both incoming and outgoing emails. Incoming emails may be
+    # auto-replies, bounces, or calendar responses. Outgoing emails may be
+    # internal communications (support tickets, etc.) that should not be scored.
     stmt = (
-        select(Email.id, Email.subject)
-        .where(Email.direction == "INCOMING_EMAIL")
+        select(Email.id, Email.subject, Email.direction, Email.to_email)
+        .where(Email.direction.in_(["INCOMING_EMAIL", "EMAIL"]))
         .where(Email.is_auto_reply == False)  # noqa: E712
         .where(or_(Email.quoted_metadata.is_(None), Email.quoted_metadata == JSON.NULL))
     )
@@ -109,11 +113,12 @@ async def classify_emails(
     if not unclassified:
         return summary
 
-    # Split into pattern-matched IDs and remaining IDs
+    # Split into pattern-matched IDs and remaining IDs.
+    # Subject patterns only apply to incoming emails (auto-reply indicators).
     pattern_matched_ids = []
     remaining_ids = []
-    for email_id, subject in unclassified:
-        if _matches_subject_pattern(subject):
+    for email_id, subject, direction, to_email in unclassified:
+        if direction == "INCOMING_EMAIL" and _matches_subject_pattern(subject):
             pattern_matched_ids.append(email_id)
         else:
             remaining_ids.append(email_id)
@@ -165,7 +170,15 @@ async def classify_emails(
                     body = email.body_text or ""
                     if len(body) > MAX_BODY_LENGTH:
                         body = body[:MAX_BODY_LENGTH]
-                    user_msg = f"Subject: {email.subject or ''}\nBody:\n{body}"
+                    direction_label = (
+                        "Outgoing" if email.direction == "EMAIL" else "Incoming"
+                    )
+                    user_msg = (
+                        f"Direction: {direction_label}\n"
+                        f"To: {email.to_email or ''}\n"
+                        f"Subject: {email.subject or ''}\n"
+                        f"Body:\n{body}"
+                    )
                     tasks.append(
                         _call_haiku_with_retry(client, user_msg, system_prompt, semaphore)
                     )

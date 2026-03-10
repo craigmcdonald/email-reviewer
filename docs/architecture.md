@@ -235,19 +235,19 @@ The entry point is `score_unscored_emails(session, batch_size=5)`, which:
 
 ## Classifier
 
-`app/services/classifier.py` classifies incoming emails as auto-replies or real emails using a two-pass approach:
+`app/services/classifier.py` classifies emails as auto-replies, non-sales, or real emails using a two-pass approach:
 
-1. **Pattern matching**: Checks email subjects against known auto-reply patterns (Automatic reply, Out of Office, OOO, Accepted, Declined, Tentative, Undeliverable, Mail Delivery Failed). Emails matching these patterns are immediately marked as `is_auto_reply=True`.
+1. **Pattern matching**: Checks incoming email subjects against known auto-reply patterns (Automatic reply, Out of Office, OOO, Accepted, Declined, Tentative, Undeliverable, Mail Delivery Failed). Incoming emails matching these patterns are immediately marked as `is_auto_reply=True`. Pattern matching only applies to incoming emails — outgoing emails always proceed to Haiku classification.
 
-2. **Haiku classification**: Remaining unclassified incoming emails are sent to Claude Haiku (`claude-haiku-4-5-20251001`) for classification. The API returns `email_type` (auto_reply or real_email) and `quoted_emails` (metadata about quoted content in the email body). Results are stored in the `is_auto_reply` and `quoted_metadata` columns.
+2. **Haiku classification**: Remaining unclassified emails (both incoming and outgoing) are sent to Claude Haiku (`claude-haiku-4-5-20251001`) for classification. The user message includes the email direction (Incoming/Outgoing) and recipient address so the model can detect internal communications. The API returns `email_type` and `quoted_emails` (metadata about quoted content in the email body). Valid `email_type` values: `real_email`, `auto_reply`, `bounce`, `calendar`, `newsletter`, `not_sales`. Any type other than `real_email` sets `is_auto_reply=True`. The `not_sales` type covers outgoing emails that are internal communications, support ticket responses, or administrative emails rather than sales outreach.
 
-The classifier processes emails where `direction=INCOMING_EMAIL`, `is_auto_reply=False`, and `quoted_metadata IS NULL` (the NULL marker indicates unclassified). After classification, `quoted_metadata` is set to an array (possibly empty) to mark the email as processed.
+The classifier processes emails where `direction` is `INCOMING_EMAIL` or `EMAIL`, `is_auto_reply=False`, and `quoted_metadata IS NULL` (the NULL marker indicates unclassified). After classification, `quoted_metadata` is set to an array (possibly empty) to mark the email as processed.
 
 The entry point is `classify_emails(session, batch_size=10)`. It follows the same batch-commit pattern as the scorer: Phase 1 collects plain IDs (no ORM objects held across batches), Phase 2 processes pattern matches in committed batches, Phase 3 processes Haiku API calls in committed batches. Each batch re-queries fresh ORM objects by ID, commits on success, and rolls back on failure so completed batches survive crashes. Returns a summary dict with `total`, `classified`, `auto_replies_found`, `chains_extracted`, `errors`, and `batch_errors`.
 
 Classification runs automatically as part of every fetch job (between fetch and chain building). There is no standalone classify endpoint.
 
-Auto-reply emails are excluded from scoring and chain building. The chain builder ignores emails with `is_auto_reply=True` when counting incoming emails, determining unanswered status, and computing `last_activity_at`.
+Auto-reply and non-sales emails are excluded from scoring and chain building. The chain builder ignores emails with `is_auto_reply=True` when counting incoming emails, determining unanswered status, and computing `last_activity_at`.
 
 ## Chain Builder
 

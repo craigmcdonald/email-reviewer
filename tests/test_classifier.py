@@ -76,17 +76,60 @@ class TestClassifyEmails:
         summary = await classify_emails(db)
         assert summary["total"] == 0
 
-    async def test_skips_outgoing_emails(self, db, make_email):
-        await make_email(
+    async def test_includes_outgoing_emails(self, db, make_email, make_settings):
+        e = await make_email(
             direction="EMAIL",
-            subject="Hello",
+            subject="Re: SD-123 Support ticket",
+            body_text="Great thanks",
+            to_email="support@native-fm.atlassian.net",
             is_auto_reply=False,
             quoted_metadata=None,
         )
         await db.commit()
 
-        summary = await classify_emails(db)
-        assert summary["total"] == 0
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(
+            text=json.dumps({"email_type": "not_sales", "quoted_emails": []})
+        )]
+
+        with patch("app.services.classifier.AsyncAnthropic") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.messages.create = AsyncMock(return_value=mock_response)
+            MockClient.return_value = mock_client
+
+            summary = await classify_emails(db)
+
+        assert summary["total"] >= 1
+        assert summary["auto_replies_found"] >= 1
+        await db.refresh(e)
+        assert e.is_auto_reply is True
+
+    async def test_outgoing_pattern_match_skipped(self, db, make_email):
+        """Subject patterns only apply to incoming emails, not outgoing."""
+        await make_email(
+            direction="EMAIL",
+            subject="Automatic reply: Out of Office",
+            body_text="I am out of office",
+            is_auto_reply=False,
+            quoted_metadata=None,
+        )
+        await db.commit()
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(
+            text=json.dumps({"email_type": "auto_reply", "quoted_emails": []})
+        )]
+
+        with patch("app.services.classifier.AsyncAnthropic") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.messages.create = AsyncMock(return_value=mock_response)
+            MockClient.return_value = mock_client
+
+            summary = await classify_emails(db)
+
+        # Outgoing email with auto-reply subject should go through Haiku, not pattern match
+        assert summary["total"] >= 1
+        mock_client.messages.create.assert_called()
 
     async def test_returns_summary_keys(self, db, make_email):
         summary = await classify_emails(db)
