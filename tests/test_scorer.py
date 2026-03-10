@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from anthropic import RateLimitError
+from anthropic import AsyncAnthropic, RateLimitError
 from sqlalchemy import select
 
 from app.models.chain_score import ChainScore
@@ -35,7 +35,7 @@ def _make_mock_claude_response(json_data):
 
 def _make_mock_client(response):
     """Build a mock AsyncAnthropic client returning a fixed response."""
-    mock_client = AsyncMock()
+    mock_client = AsyncMock(spec=AsyncAnthropic)
     mock_client.messages.create = AsyncMock(return_value=response)
     return mock_client
 
@@ -402,7 +402,7 @@ class TestScoreSingleEmail:
         valid_message.content = [MagicMock(text=valid_json)]
         valid_message.usage = MagicMock(input_tokens=100, output_tokens=50)
 
-        mock_client = AsyncMock()
+        mock_client = AsyncMock(spec=AsyncAnthropic)
         mock_client.messages.create = AsyncMock(side_effect=[garbage_message, valid_message])
 
         ctx = EmailScoringContext(email=Email(id=2, from_email="a@b.com", body_text="Test body"))
@@ -420,7 +420,7 @@ class TestScoreSingleEmail:
         garbage_message.content = [MagicMock(text="garbage")]
         garbage_message.usage = MagicMock(input_tokens=100, output_tokens=50)
 
-        mock_client = AsyncMock()
+        mock_client = AsyncMock(spec=AsyncAnthropic)
         mock_client.messages.create = AsyncMock(return_value=garbage_message)
 
         ctx = EmailScoringContext(email=Email(id=3, from_email="a@b.com", body_text="Test body"))
@@ -440,7 +440,7 @@ class TestScoreSingleEmail:
         })
 
         rate_limit_response = MagicMock(status_code=429, headers={"retry-after": "42"})
-        mock_client = AsyncMock()
+        mock_client = AsyncMock(spec=AsyncAnthropic)
         mock_client.messages.create = AsyncMock(
             side_effect=[
                 RateLimitError(message="rate limited", response=rate_limit_response, body=None),
@@ -468,7 +468,7 @@ class TestScoreSingleEmail:
         })
 
         no_header_response = MagicMock(status_code=429, headers={})
-        mock_client = AsyncMock()
+        mock_client = AsyncMock(spec=AsyncAnthropic)
         mock_client.messages.create = AsyncMock(
             side_effect=[
                 RateLimitError(message="rate limited", response=no_header_response, body=None),
@@ -487,7 +487,7 @@ class TestScoreSingleEmail:
     @patch("app.services.scorer.asyncio.sleep", new_callable=AsyncMock)
     async def test_returns_none_after_all_rate_limit_retries_exhausted(self, mock_sleep, db, make_settings):
         settings = await make_settings()
-        mock_client = AsyncMock()
+        mock_client = AsyncMock(spec=AsyncAnthropic)
         mock_client.messages.create = AsyncMock(
             side_effect=RateLimitError(
                 message="rate limited", response=MagicMock(status_code=429, headers={"retry-after": "5"}), body=None
@@ -554,7 +554,7 @@ class TestScoreUnscoredEmails:
         })
         # score_unscored_emails also calls score_unscored_chains which creates
         # its own AsyncAnthropic, so we patch at module level to cover both.
-        mock_client_instance = AsyncMock()
+        mock_client_instance = AsyncMock(spec=AsyncAnthropic)
         mock_client_instance.messages.create = AsyncMock(return_value=email_response)
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
             summary = await score_unscored_emails(db)
@@ -616,7 +616,7 @@ class TestScoreUnscoredEmails:
             "personalisation": 7, "clarity": 8,
             "value_proposition": 6, "cta": 5, "notes": "Good.",
         })
-        mock_client_instance = AsyncMock()
+        mock_client_instance = AsyncMock(spec=AsyncAnthropic)
         mock_client_instance.messages.create = AsyncMock(return_value=email_response)
 
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
@@ -670,7 +670,7 @@ class TestScoreUnscoredEmails:
                 raise RuntimeError("Simulated API failure")
             return _make_mock_claude_response(valid_json)
 
-        mock_client_instance = AsyncMock()
+        mock_client_instance = AsyncMock(spec=AsyncAnthropic)
         mock_client_instance.messages.create = AsyncMock(side_effect=_side_effect)
 
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
@@ -854,7 +854,7 @@ class TestScoreUnscoredChains:
         garbage_message = MagicMock()
         garbage_message.content = [MagicMock(text="not json")]
         garbage_message.usage = MagicMock(input_tokens=100, output_tokens=50)
-        mock_client_instance = AsyncMock()
+        mock_client_instance = AsyncMock(spec=AsyncAnthropic)
         mock_client_instance.messages.create = AsyncMock(return_value=garbage_message)
 
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
@@ -881,7 +881,7 @@ class TestScoreUnscoredChains:
             direction="INCOMING_EMAIL",
         )
 
-        with patch("app.services.scorer.AsyncAnthropic", return_value=AsyncMock()):
+        with patch("app.services.scorer.AsyncAnthropic", return_value=AsyncMock(spec=AsyncAnthropic)):
             result = await score_unscored_chains(db)
 
         # No outgoing emails means no rep to find type for, skipped as untyped
@@ -904,7 +904,7 @@ class TestScoreUnscoredChains:
             direction="EMAIL",
         )
 
-        mock_client_instance = AsyncMock()
+        mock_client_instance = AsyncMock(spec=AsyncAnthropic)
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
             result = await score_unscored_chains(db)
 
@@ -929,7 +929,7 @@ class TestScoreUnscoredChains:
             direction="EMAIL",
         )
 
-        mock_client_instance = AsyncMock()
+        mock_client_instance = AsyncMock(spec=AsyncAnthropic)
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
             result = await score_unscored_chains(db)
 
@@ -964,7 +964,7 @@ class TestScoreUnscoredChains:
         )]
         mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
 
-        mock_client_instance = AsyncMock()
+        mock_client_instance = AsyncMock(spec=AsyncAnthropic)
         mock_client_instance.messages.create = AsyncMock(return_value=mock_response)
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
             result = await score_unscored_chains(db)
