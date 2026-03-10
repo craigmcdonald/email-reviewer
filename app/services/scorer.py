@@ -341,106 +341,106 @@ async def score_unscored_emails(
             ids_to_score.append((email.id, rep_type))
 
     if ids_to_score:
-        async with AsyncAnthropic() as client:
+        client = AsyncAnthropic()
+        try:
             settings = await get_settings(session)
 
             if not settings.initial_email_prompt_blocks:
                 summary["error_message"] = "Initial email prompt blocks not configured in settings"
-                return summary
-            if not settings.chain_email_prompt_blocks:
+            elif not settings.chain_email_prompt_blocks:
                 summary["error_message"] = "Chain email prompt blocks not configured in settings"
-                return summary
-            if not settings.follow_up_email_prompt_blocks:
+            elif not settings.follow_up_email_prompt_blocks:
                 summary["error_message"] = "Follow-up email prompt blocks not configured in settings"
-                return summary
+            else:
+                weights = {
+                    "weight_value_proposition": settings.weight_value_proposition,
+                    "weight_personalisation": settings.weight_personalisation,
+                    "weight_cta": settings.weight_cta,
+                    "weight_clarity": settings.weight_clarity,
+                }
 
-            weights = {
-                "weight_value_proposition": settings.weight_value_proposition,
-                "weight_personalisation": settings.weight_personalisation,
-                "weight_cta": settings.weight_cta,
-                "weight_clarity": settings.weight_clarity,
-            }
+                # Phase 2: process in batches, each with fresh ORM objects
+                for i in range(0, len(ids_to_score), batch_size):
+                    batch_items = ids_to_score[i : i + batch_size]
+                    batch_ids = [item[0] for item in batch_items]
+                    batch_rep_types = {item[0]: item[1] for item in batch_items}
+                    try:
+                        emails = (await session.execute(
+                            select(Email).where(Email.id.in_(batch_ids))
+                        )).scalars().all()
 
-            # Phase 2: process in batches, each with fresh ORM objects
-            for i in range(0, len(ids_to_score), batch_size):
-                batch_items = ids_to_score[i : i + batch_size]
-                batch_ids = [item[0] for item in batch_items]
-                batch_rep_types = {item[0]: item[1] for item in batch_items}
-                try:
-                    emails = (await session.execute(
-                        select(Email).where(Email.id.in_(batch_ids))
-                    )).scalars().all()
+                        semaphore = asyncio.Semaphore(batch_size)
 
-                    semaphore = asyncio.Semaphore(batch_size)
+                        contexts: list[EmailScoringContext] = []
+                        for email in emails:
+                            chain_context = await _build_chain_context(session, email)
+                            follow_up_context = ""
+                            is_follow_up = False
+                            if email.chain_id is None:
+                                fu_context = await _build_follow_up_context(session, email)
+                                if fu_context:
+                                    follow_up_context = fu_context
+                                    is_follow_up = True
+                            contexts.append(EmailScoringContext(
+                                email=email,
+                                rep_type=batch_rep_types[email.id],
+                                chain_context=chain_context,
+                                follow_up_context=follow_up_context,
+                                is_follow_up=is_follow_up,
+                            ))
 
-                    contexts: list[EmailScoringContext] = []
-                    for email in emails:
-                        chain_context = await _build_chain_context(session, email)
-                        follow_up_context = ""
-                        is_follow_up = False
-                        if email.chain_id is None:
-                            fu_context = await _build_follow_up_context(session, email)
-                            if fu_context:
-                                follow_up_context = fu_context
-                                is_follow_up = True
-                        contexts.append(EmailScoringContext(
-                            email=email,
-                            rep_type=batch_rep_types[email.id],
-                            chain_context=chain_context,
-                            follow_up_context=follow_up_context,
-                            is_follow_up=is_follow_up,
-                        ))
+                        tasks = [
+                            _score_single_email(client, ctx, semaphore, settings)
+                            for ctx in contexts
+                        ]
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                    tasks = [
-                        _score_single_email(client, ctx, semaphore, settings)
-                        for ctx in contexts
-                    ]
-                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                        for ctx, scoring_result in zip(contexts, results):
+                            if isinstance(scoring_result, BaseException):
+                                logger.error(
+                                    "Email %d scoring raised: %s", ctx.email.id, scoring_result,
+                                )
+                                scoring_result = None
+                            email = ctx.email
+                            if scoring_result is not None:
+                                dimension_scores = {
+                                    "value_proposition": scoring_result.value_proposition,
+                                    "personalisation": scoring_result.personalisation,
+                                    "cta": scoring_result.cta,
+                                    "clarity": scoring_result.clarity,
+                                }
+                                overall = _calculate_weighted_overall(dimension_scores, weights)
+                                score = Score(
+                                    email_id=email.id,
+                                    personalisation=scoring_result.personalisation,
+                                    clarity=scoring_result.clarity,
+                                    value_proposition=scoring_result.value_proposition,
+                                    cta=scoring_result.cta,
+                                    overall=overall,
+                                    notes=scoring_result.notes,
+                                    score_error=False,
+                                    scored_at=_utcnow(),
+                                )
+                                session.add(score)
+                                summary["scored"] += 1
+                                summary["total_input_tokens"] += scoring_result.tokens.get("input", 0)
+                                summary["total_output_tokens"] += scoring_result.tokens.get("output", 0)
+                            else:
+                                score = Score(
+                                    email_id=email.id,
+                                    score_error=True,
+                                    scored_at=_utcnow(),
+                                )
+                                session.add(score)
+                                summary["errors"] += 1
 
-                    for ctx, scoring_result in zip(contexts, results):
-                        if isinstance(scoring_result, BaseException):
-                            logger.error(
-                                "Email %d scoring raised: %s", ctx.email.id, scoring_result,
-                            )
-                            scoring_result = None
-                        email = ctx.email
-                        if scoring_result is not None:
-                            dimension_scores = {
-                                "value_proposition": scoring_result.value_proposition,
-                                "personalisation": scoring_result.personalisation,
-                                "cta": scoring_result.cta,
-                                "clarity": scoring_result.clarity,
-                            }
-                            overall = _calculate_weighted_overall(dimension_scores, weights)
-                            score = Score(
-                                email_id=email.id,
-                                personalisation=scoring_result.personalisation,
-                                clarity=scoring_result.clarity,
-                                value_proposition=scoring_result.value_proposition,
-                                cta=scoring_result.cta,
-                                overall=overall,
-                                notes=scoring_result.notes,
-                                score_error=False,
-                                scored_at=_utcnow(),
-                            )
-                            session.add(score)
-                            summary["scored"] += 1
-                            summary["total_input_tokens"] += scoring_result.tokens.get("input", 0)
-                            summary["total_output_tokens"] += scoring_result.tokens.get("output", 0)
-                        else:
-                            score = Score(
-                                email_id=email.id,
-                                score_error=True,
-                                scored_at=_utcnow(),
-                            )
-                            session.add(score)
-                            summary["errors"] += 1
-
-                    await session.commit()
-                except Exception:
-                    logger.exception("Email scoring batch %d failed", i // batch_size)
-                    await session.rollback()
-                    summary["batch_errors"] += 1
+                        await session.commit()
+                    except Exception:
+                        logger.exception("Email scoring batch %d failed", i // batch_size)
+                        await session.rollback()
+                        summary["batch_errors"] += 1
+        finally:
+            await client.aclose()
 
     # Score unscored chains after individual emails
     chain_result = await score_unscored_chains(session, batch_size=batch_size)
@@ -516,7 +516,8 @@ async def score_unscored_chains(
 
     chain_ids_to_score = [chain.id for chain in unscored_chains]
 
-    async with AsyncAnthropic() as client:
+    client = AsyncAnthropic()
+    try:
         system_prompt = assemble_prompt(settings.chain_evaluation_prompt_blocks, CHAIN_DIMENSIONS)
 
         # Phase 2: process in batches concurrently, each with fresh ORM objects
@@ -609,6 +610,8 @@ async def score_unscored_chains(
                 logger.exception("Chain scoring batch %d failed", i // batch_size)
                 await session.rollback()
                 summary["batch_errors"] += 1
+    finally:
+        await client.aclose()
 
     return summary
 

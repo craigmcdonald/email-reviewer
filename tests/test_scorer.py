@@ -881,7 +881,7 @@ class TestScoreUnscoredChains:
             direction="INCOMING_EMAIL",
         )
 
-        with patch("app.services.scorer.AsyncAnthropic") as mock_cls:
+        with patch("app.services.scorer.AsyncAnthropic", return_value=AsyncMock()):
             result = await score_unscored_chains(db)
 
         # No outgoing emails means no rep to find type for, skipped as untyped

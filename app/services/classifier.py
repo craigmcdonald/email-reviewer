@@ -149,7 +149,8 @@ async def classify_emails(
     system_prompt = assemble_prompt(
         settings.classifier_prompt_blocks, CLASSIFIER_DIMENSIONS
     )
-    async with AsyncAnthropic() as client:
+    client = AsyncAnthropic()
+    try:
         semaphore = asyncio.Semaphore(batch_size)
 
         for i in range(0, len(remaining_ids), batch_size):
@@ -199,5 +200,7 @@ async def classify_emails(
                 logger.exception("Haiku classification batch %d failed", i // batch_size)
                 await session.rollback()
                 summary["batch_errors"] += 1
+    finally:
+        await client.aclose()
 
     return summary
