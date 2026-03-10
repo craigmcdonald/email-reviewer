@@ -214,6 +214,6 @@ async def classify_emails(
                 await session.rollback()
                 summary["batch_errors"] += 1
     finally:
-        await client.aclose()
+        await client.close()
 
     return summary

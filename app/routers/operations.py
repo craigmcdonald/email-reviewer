@@ -25,6 +25,14 @@ router = APIRouter(prefix="/api/operations")
 STALE_PENDING_MINUTES = 10
 STALE_RUNNING_MINUTES = 60
 
+# RQ job timeouts in seconds. Fetch includes classification (Haiku API calls
+# for every unclassified email) and optionally scoring. Score/rescore send
+# every unscored email to the Sonnet API. Both can exceed the RQ default of
+# 180 seconds with large email volumes.
+FETCH_JOB_TIMEOUT = 1800
+SCORE_JOB_TIMEOUT = 1800
+RESCORE_JOB_TIMEOUT = 3600
+
 
 async def _reap_stale_jobs(session: AsyncSession) -> None:
     """Mark PENDING and RUNNING jobs as FAILED when they exceed age thresholds.
@@ -124,7 +132,7 @@ async def start_fetch(
     await session.commit()
 
     if queue is not None:
-        queue.enqueue(fetch_task, job.job_id, **fetch_kwargs)
+        queue.enqueue(fetch_task, job.job_id, **fetch_kwargs, job_timeout=FETCH_JOB_TIMEOUT)
     else:
         background_tasks.add_task(run_fetch_job, None, job.job_id, **fetch_kwargs)
     return job
@@ -142,7 +150,7 @@ async def start_score(
     await session.commit()
 
     if queue is not None:
-        queue.enqueue(score_task, job.job_id)
+        queue.enqueue(score_task, job.job_id, job_timeout=SCORE_JOB_TIMEOUT)
     else:
         background_tasks.add_task(run_score_job, None, job.job_id)
     return job
@@ -160,7 +168,7 @@ async def start_rescore(
     await session.commit()
 
     if queue is not None:
-        queue.enqueue(rescore_task, job.job_id)
+        queue.enqueue(rescore_task, job.job_id, job_timeout=RESCORE_JOB_TIMEOUT)
     else:
         background_tasks.add_task(run_rescore_job, None, job.job_id)
     return job

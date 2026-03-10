@@ -2,6 +2,8 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from anthropic import AsyncAnthropic
+
 from app.services.classifier import (
     _matches_subject_pattern,
     classify_emails,
@@ -93,7 +95,7 @@ class TestClassifyEmails:
         )]
 
         with patch("app.services.classifier.AsyncAnthropic") as MockClient:
-            mock_client = AsyncMock()
+            mock_client = AsyncMock(spec=AsyncAnthropic)
             mock_client.messages.create = AsyncMock(return_value=mock_response)
             MockClient.return_value = mock_client
 
@@ -121,7 +123,7 @@ class TestClassifyEmails:
         )]
 
         with patch("app.services.classifier.AsyncAnthropic") as MockClient:
-            mock_client = AsyncMock()
+            mock_client = AsyncMock(spec=AsyncAnthropic)
             mock_client.messages.create = AsyncMock(return_value=mock_response)
             MockClient.return_value = mock_client
 
@@ -155,7 +157,7 @@ class TestClassifyEmails:
         )]
 
         with patch("app.services.classifier.AsyncAnthropic") as MockClient:
-            mock_client = AsyncMock()
+            mock_client = AsyncMock(spec=AsyncAnthropic)
             mock_client.messages.create = AsyncMock(return_value=mock_response)
             MockClient.return_value = mock_client
 
@@ -181,7 +183,7 @@ class TestClassifyEmails:
         )]
 
         with patch("app.services.classifier.AsyncAnthropic") as MockClient:
-            mock_client = AsyncMock()
+            mock_client = AsyncMock(spec=AsyncAnthropic)
             mock_client.messages.create = AsyncMock(return_value=mock_response)
             MockClient.return_value = mock_client
 
@@ -210,7 +212,7 @@ class TestClassifyEmails:
         )]
 
         with patch("app.services.classifier.AsyncAnthropic") as MockClient:
-            mock_client = AsyncMock()
+            mock_client = AsyncMock(spec=AsyncAnthropic)
             mock_client.messages.create = AsyncMock(return_value=mock_response)
             MockClient.return_value = mock_client
 
