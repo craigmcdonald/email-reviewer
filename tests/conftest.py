@@ -27,6 +27,7 @@ async def _setup_db():
         _current_engine, class_=AsyncSession, expire_on_commit=False
     )
     async with _current_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     async with TestingSessionLocal() as session:
         settings_row = Settings(id=1, **SETTINGS_SEED)
