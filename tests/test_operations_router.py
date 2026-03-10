@@ -1,12 +1,16 @@
+import json
 from contextlib import asynccontextmanager
-from datetime import timedelta
-from unittest.mock import AsyncMock, patch
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy import select
 
 from app.enums import JobStatus, JobType
 from app.models.base import _utcnow
+from app.models.chain import EmailChain
+from app.models.chain_score import ChainScore
 from app.models.job import Job
+from app.models.score import Score
 from app.routers.operations import STALE_PENDING_MINUTES
 from app.worker import redis_available
 from tests.conftest import _get_session_factory
@@ -365,6 +369,115 @@ class TestJobExecutionIntegration:
         result = await db.execute(select(Job).where(Job.job_id == job_id))
         job = result.scalar_one()
         assert job.status == JobStatus.COMPLETED
+
+
+class TestChainBuildThenScoreEndToEnd:
+    """Full pipeline: create emails → rebuild chains → score → verify ChainScore in DB.
+
+    Only the Claude API is mocked. build_chains and score_unscored_emails run
+    for real against the test database.
+    """
+
+    @patch("app.services.job_runner.worker_session", _test_worker_session)
+    async def test_rebuild_chains_then_score_creates_chain_scores(
+        self, client, db, make_email, make_rep, make_settings,
+    ):
+        await make_settings()
+        await make_rep(email="rep@example.com", display_name="Alice Rep", rep_type="SDR")
+
+        # Two emails linked by message_id / in_reply_to so build_chains groups them.
+        await make_email(
+            from_email="rep@example.com",
+            to_email="prospect@example.com",
+            subject="Quick question",
+            body_text="Hi, I wanted to reach out about your needs and see if there is anything we can do to help your team achieve its goals this quarter with our platform",
+            direction="EMAIL",
+            message_id="<msg-001@example.com>",
+            timestamp=datetime(2026, 3, 1, 10, 0, 0),
+        )
+        await make_email(
+            from_email="prospect@example.com",
+            to_email="rep@example.com",
+            subject="Re: Quick question",
+            body_text="Thanks for reaching out, tell me more.",
+            direction="RECEIVED",
+            message_id="<msg-002@example.com>",
+            in_reply_to="<msg-001@example.com>",
+            timestamp=datetime(2026, 3, 2, 14, 0, 0),
+        )
+        await db.commit()
+
+        # --- Step 1: rebuild chains via the API endpoint ---
+        resp = await client.post("/api/operations/chain-build")
+        assert resp.status_code == 202
+        job_id = resp.json()["job_id"]
+
+        result = await db.execute(select(Job).where(Job.job_id == job_id))
+        job = result.scalar_one()
+        assert job.status == JobStatus.COMPLETED
+        assert job.result_summary["chains_created"] >= 1
+
+        # Verify the chain exists with both emails linked
+        chain_result = await db.execute(select(EmailChain))
+        chains = chain_result.scalars().all()
+        assert len(chains) == 1
+        chain = chains[0]
+        assert chain.email_count == 2
+        assert chain.outgoing_count == 1
+        assert chain.incoming_count == 1
+
+        # No ChainScore yet
+        cs_result = await db.execute(select(ChainScore))
+        assert cs_result.scalars().all() == []
+
+        # --- Step 2: score via the API endpoint (mock only the Claude API) ---
+        email_response = MagicMock()
+        email_response.content = [MagicMock(text=json.dumps({
+            "personalisation": 7, "clarity": 8,
+            "value_proposition": 6, "cta": 5, "notes": "Decent email.",
+        }))]
+        email_response.usage = MagicMock(input_tokens=100, output_tokens=50)
+
+        chain_response = MagicMock()
+        chain_response.content = [MagicMock(text=json.dumps({
+            "progression": 8, "responsiveness": 7,
+            "persistence": 6, "conversation_quality": 9,
+            "notes": "Strong follow-up chain.",
+        }))]
+        chain_response.usage = MagicMock(input_tokens=200, output_tokens=80)
+
+        mock_client = AsyncMock()
+        # First call scores the individual email, second call scores the chain
+        mock_client.messages.create = AsyncMock(
+            side_effect=[email_response, chain_response]
+        )
+
+        with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client):
+            resp = await client.post("/api/operations/score")
+            assert resp.status_code == 202
+            score_job_id = resp.json()["job_id"]
+
+        result = await db.execute(select(Job).where(Job.job_id == score_job_id))
+        score_job = result.scalar_one()
+        assert score_job.status == JobStatus.COMPLETED
+        assert score_job.result_summary["chains_scored"] == 1
+
+        # Verify ChainScore was persisted with the correct values
+        cs_result = await db.execute(
+            select(ChainScore).where(ChainScore.chain_id == chain.id)
+        )
+        chain_score = cs_result.scalar_one()
+        assert chain_score.progression == 8
+        assert chain_score.responsiveness == 7
+        assert chain_score.persistence == 6
+        assert chain_score.conversation_quality == 9
+        assert chain_score.notes == "Strong follow-up chain."
+        assert chain_score.score_error is False
+
+        # Individual email score also created
+        score_result = await db.execute(select(Score))
+        scores = score_result.scalars().all()
+        assert len(scores) >= 1
 
 
 class TestStaleJobReaping:
