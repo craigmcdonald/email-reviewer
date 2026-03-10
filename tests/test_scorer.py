@@ -676,10 +676,13 @@ class TestScoreUnscoredEmails:
         with patch("app.services.scorer.AsyncAnthropic", return_value=mock_client_instance):
             summary = await score_unscored_emails(db, batch_size=3)
 
-        assert summary["scored"] == 3
-        assert summary["batch_errors"] == 1
+        # With return_exceptions=True, the failed email is isolated —
+        # batch 1 scores 3, batch 2 scores 2 (1 error), total 5 scored.
+        assert summary["scored"] == 5
+        assert summary["errors"] == 1
+        assert summary["batch_errors"] == 0
         result = await db.execute(select(Score))
-        assert len(result.scalars().all()) == 3
+        assert len(result.scalars().all()) == 6  # 5 scored + 1 error record
 
 
 class TestScoreUnscoredChains:

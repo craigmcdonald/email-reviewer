@@ -35,12 +35,10 @@ def _score_fill(value: int | None) -> PatternFill | None:
     """Return the fill colour for a score value."""
     if value is None:
         return None
-    if value >= 8:
+    if value >= 7:
         return GREEN_FILL
-    if value >= 6:
-        return YELLOW_FILL
     if value >= 4:
-        return ORANGE_FILL
+        return YELLOW_FILL
     return RED_FILL
 
 

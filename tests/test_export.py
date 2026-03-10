@@ -100,9 +100,9 @@ class TestExportToExcel:
         )
 
         # Row 2 data; cols 4-7 are Personalisation, Clarity, Value Proposition, CTA
-        assert ws.cell(row=2, column=4).fill == green   # score 8 >= 8
-        assert ws.cell(row=2, column=5).fill == yellow  # score 6 >= 6
-        assert ws.cell(row=2, column=6).fill == orange  # score 4 >= 4
+        assert ws.cell(row=2, column=4).fill == green   # score 8 >= 7
+        assert ws.cell(row=2, column=5).fill == yellow  # score 6 >= 4
+        assert ws.cell(row=2, column=6).fill == yellow  # score 4 >= 4
         assert ws.cell(row=2, column=7).fill == red     # score 2 < 4
 
     async def test_rep_averages_sorted_by_overall_descending(
@@ -211,9 +211,9 @@ class TestExportRepEmails:
         orange = PatternFill(start_color="F4B084", end_color="F4B084", fill_type="solid")
         red = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 
-        assert ws.cell(row=2, column=4).fill == green   # 8 >= 8
-        assert ws.cell(row=2, column=5).fill == yellow  # 6 >= 6
-        assert ws.cell(row=2, column=6).fill == orange  # 4 >= 4
+        assert ws.cell(row=2, column=4).fill == green   # 8 >= 7
+        assert ws.cell(row=2, column=5).fill == yellow  # 6 >= 4
+        assert ws.cell(row=2, column=6).fill == yellow  # 4 >= 4
         assert ws.cell(row=2, column=7).fill == red     # 2 < 4
 
 

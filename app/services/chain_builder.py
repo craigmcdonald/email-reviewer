@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, load_only
 
 from app.enums import EmailDirection
 from app.models.chain import EmailChain
@@ -43,7 +43,14 @@ def _is_outgoing(email: Email) -> bool:
 
 async def build_chains(session: AsyncSession) -> dict:
     result = await session.execute(
-        select(Email).order_by(Email.timestamp.asc().nullslast(), Email.id.asc())
+        select(Email)
+        .options(load_only(
+            Email.id, Email.message_id, Email.in_reply_to, Email.thread_id,
+            Email.from_email, Email.from_name, Email.to_email, Email.to_name,
+            Email.subject, Email.timestamp, Email.direction, Email.is_auto_reply,
+            Email.chain_id, Email.position_in_chain, Email.quoted_metadata,
+        ))
+        .order_by(Email.timestamp.asc().nullslast(), Email.id.asc())
     )
     emails = list(result.scalars().all())
 
@@ -255,6 +262,8 @@ async def build_chains(session: AsyncSession) -> dict:
     await session.flush()
 
     # Pass 4: quoted-content matching for unchained emails with quoted_metadata
+    # Track which chains were modified so we can update their metadata
+    modified_chain_ids: set[int] = set()
     unchained_with_quotes = [
         e for e in emails
         if e.chain_id is None and e.quoted_metadata
@@ -269,25 +278,49 @@ async def build_chains(session: AsyncSession) -> dict:
             if not q_from or not q_subject:
                 continue
             q_norm = normalize_subject(q_subject)
-            # Find matching emails in the database
             for other in emails:
                 if other.id == e.id:
                     continue
                 if (other.from_email and other.from_email.lower() == q_from.lower()
                         and normalize_subject(other.subject) == q_norm):
-                    # Link both into the same group
                     if other.chain_id is not None:
-                        # Add this email to other's chain
                         e.chain_id = other.chain_id
-                        # Get max position
                         max_pos = max(
                             (x.position_in_chain or 0)
                             for x in emails if x.chain_id == other.chain_id
                         )
                         e.position_in_chain = max_pos + 1
+                        modified_chain_ids.add(other.chain_id)
+                        chains_updated += 1
                         break
             if e.chain_id is not None:
                 break
+
+    # Recalculate metadata for chains modified by Pass 4
+    if modified_chain_ids:
+        chain_result = await session.execute(
+            select(EmailChain).where(EmailChain.id.in_(modified_chain_ids))
+        )
+        for chain in chain_result.scalars().all():
+            chain_emails_list = [
+                x for x in emails if x.chain_id == chain.id
+            ]
+            chain_emails_list.sort(key=lambda x: (x.timestamp or datetime.min, x.id))
+            outgoing = sum(1 for x in chain_emails_list if _is_outgoing(x))
+            incoming = sum(1 for x in chain_emails_list if not _is_outgoing(x) and not x.is_auto_reply)
+            chain.email_count = len(chain_emails_list)
+            chain.outgoing_count = outgoing
+            chain.incoming_count = incoming
+            chain.last_activity_at = chain_emails_list[-1].timestamp if chain_emails_list else chain.last_activity_at
+            last_incoming_ts = None
+            for x in reversed(chain_emails_list):
+                if not _is_outgoing(x) and not x.is_auto_reply:
+                    last_incoming_ts = x.timestamp
+                    break
+            chain.is_unanswered = not any(
+                _is_outgoing(x) and x.timestamp and last_incoming_ts and x.timestamp > last_incoming_ts
+                for x in chain_emails_list
+            )
 
     await session.flush()
 

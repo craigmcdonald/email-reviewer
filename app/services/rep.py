@@ -1,4 +1,3 @@
-import math
 from datetime import date
 
 from sqlalchemy import func, or_, select
@@ -6,20 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.models import ChainScore, Email, EmailChain, Rep, Score
-
-
-def _paginate_result(items, total: int, page: int, per_page: int | None):
-    if per_page:
-        pages = math.ceil(total / per_page)
-    else:
-        pages = 1
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "per_page": per_page,
-        "pages": pages,
-    }
+from app.services.pagination import paginate_result as _paginate_result
 
 
 async def get_team(
@@ -158,6 +144,7 @@ async def get_rep_emails(
     """
     filters = [Email.from_email == rep_email]
 
+    fu_ids: set[int] | None = None
     if email_type in ("outreach", "follow_up"):
         filters.append(Email.chain_id.is_(None))
         fu_ids = await _follow_up_ids(session, rep_email)

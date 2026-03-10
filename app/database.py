@@ -26,7 +26,6 @@ def _create_engine(url: str):
 _url = _async_database_url(settings.DATABASE_URL)
 engine = _create_engine(_url)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-AsyncSessionLocal = async_session
 
 
 async def get_db():
