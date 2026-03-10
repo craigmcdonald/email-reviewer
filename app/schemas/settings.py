@@ -16,6 +16,7 @@ PROMPT_BLOCK_FIELDS = [
     "chain_email_prompt_blocks",
     "chain_evaluation_prompt_blocks",
     "follow_up_email_prompt_blocks",
+    "classifier_prompt_blocks",
 ]
 
 

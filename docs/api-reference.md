@@ -178,12 +178,6 @@ Rebuild conversation chains from email threading data. Returns 202 with job reco
 
 **Response**: `JobResponse` (202)
 
-### POST /api/operations/classify
-
-Classify incoming emails as auto-replies or real emails. Returns 202 with job record. Rejects 409 if a CLASSIFY job is already RUNNING.
-
-**Response**: `JobResponse` (202)
-
 ### GET /api/operations/jobs
 
 List all jobs ordered by created_at descending.

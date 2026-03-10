@@ -158,7 +158,6 @@ Operations run as background jobs. The app supports two modes:
 | Rescore | `POST /api/operations/rescore` | Delete all scores and re-score every email and chain. |
 | Export | `POST /api/operations/export` | Generate Excel workbook of scored emails and rep averages. |
 | Rebuild Chains | `POST /api/operations/chain-build` | Rebuild conversation chains from email threading data. |
-| Classify | `POST /api/operations/classify` | Classify incoming emails as auto-replies or real emails using pattern matching and Haiku. |
 | Score Chains | Included in Score/Rescore | Chain-level scoring runs automatically after individual email scoring. |
 
 ### Default: In-Process (No Redis)
@@ -226,9 +225,10 @@ The service is idempotent — existing chain assignments are cleared and rebuilt
 
 ## Settings UI
 
-The settings page (`/settings`) uses a tabbed layout with two tabs:
+The settings page (`/settings`) uses a tabbed layout with three tabs:
 
 - **General** — `global_start_date`, `company_domains`, `scoring_batch_size`, `auto_score_after_fetch`. Operations panel for fetch, score, rescore, export, and chain-build.
+- **Classification** — Structured prompt blocks for the Haiku email classifier (`classifier_prompt_blocks`). Controls how incoming emails are classified as auto-replies or real responses. Blocks: `opening`, `email_type`, `quoted_emails`, `closing`.
 - **Evaluation** — Structured prompt blocks for three evaluation types (initial email, follow-up email, chain evaluation). Each prompt is split into an opening context block, per-dimension criteria blocks, and a response format block. Includes score dimension weights (`weight_value_proposition`, `weight_personalisation`, `weight_cta`, `weight_clarity`). Weights must sum to 1.0.
 
 All tab content is rendered server-side; JavaScript toggles visibility. The `?tab=` query parameter selects the active tab.
@@ -277,7 +277,7 @@ email-reviewer/
 │   │   ├── classifier.py     # Email classification (auto-reply detection via patterns + Haiku)
 │   │   ├── scorer.py         # Claude API email scoring
 │   │   ├── settings.py       # Settings CRUD (get_settings, update_settings)
-│   │   └── job_runner.py     # Job execution (fetch, score, rescore, export, chain build, classify)
+│   │   └── job_runner.py     # Job execution (fetch, score, rescore, export, chain build)
 │   ├── static/               # Static assets
 │   │   └── css/
 │   │       ├── input.css     # Tailwind CSS input (import directive)

@@ -78,10 +78,12 @@ async def classify_emails(
 ) -> dict:
     """Classify unclassified incoming emails.
 
-    1. Fast pass: subject-pattern matching for obvious auto-replies.
-    2. Haiku pass: API classification for remaining unclassified incoming emails.
+    Processes in two phases following the batch-commit pattern:
+    1. Pattern matching pass: batch-committed subject pattern checks.
+    2. Haiku API pass: batch-committed API classification for remaining.
 
-    Returns summary counts.
+    Each batch re-queries fresh ORM objects and commits independently so
+    completed work survives crashes.
     """
     summary = {
         "total": 0,
@@ -89,48 +91,59 @@ async def classify_emails(
         "auto_replies_found": 0,
         "chains_extracted": 0,
         "errors": 0,
+        "batch_errors": 0,
     }
 
-    # Find unclassified incoming emails (is_auto_reply=False and no quoted_metadata yet)
-    # We classify emails that haven't been through the classifier yet.
-    # Use a marker: emails with direction=INCOMING_EMAIL that haven't been classified
-    # We'll process all incoming emails that are is_auto_reply=False
-    # and check subject patterns + send remaining to Haiku.
+    # Phase 1: collect IDs and subjects for pattern matching (no ORM objects held)
     stmt = (
-        select(Email)
+        select(Email.id, Email.subject)
         .where(Email.direction == "INCOMING_EMAIL")
         .where(Email.is_auto_reply == False)  # noqa: E712
         .where(or_(Email.quoted_metadata.is_(None), Email.quoted_metadata == JSON.NULL))
     )
     result = await session.execute(stmt)
-    unclassified = result.scalars().all()
+    unclassified = result.all()
 
     summary["total"] = len(unclassified)
 
     if not unclassified:
         return summary
 
-    # Pass 1: subject-pattern matching
-    pattern_matched = []
-    remaining = []
-    for email in unclassified:
-        if _matches_subject_pattern(email.subject):
-            email.is_auto_reply = True
-            summary["auto_replies_found"] += 1
-            summary["classified"] += 1
-            pattern_matched.append(email)
+    # Split into pattern-matched IDs and remaining IDs
+    pattern_matched_ids = []
+    remaining_ids = []
+    for email_id, subject in unclassified:
+        if _matches_subject_pattern(subject):
+            pattern_matched_ids.append(email_id)
         else:
-            remaining.append(email)
+            remaining_ids.append(email_id)
 
-    await session.flush()
+    # Phase 2: pattern matching pass — batch-committed
+    for i in range(0, len(pattern_matched_ids), batch_size):
+        batch_ids = pattern_matched_ids[i : i + batch_size]
+        try:
+            emails = (await session.execute(
+                select(Email).where(Email.id.in_(batch_ids))
+            )).scalars().all()
 
-    if not remaining:
+            for email in emails:
+                email.is_auto_reply = True
+                email.quoted_metadata = []
+
+            summary["auto_replies_found"] += len(emails)
+            summary["classified"] += len(emails)
+            await session.commit()
+        except Exception:
+            logger.exception("Pattern classification batch %d failed", i // batch_size)
+            await session.rollback()
+            summary["batch_errors"] += 1
+
+    if not remaining_ids:
         return summary
 
-    # Pass 2: Haiku classification
+    # Phase 3: Haiku API pass — batch-committed
     settings = await get_settings(session)
     if not settings.classifier_prompt_blocks:
-        # No classifier prompt configured, skip API classification
         return summary
 
     system_prompt = assemble_prompt(
@@ -139,42 +152,52 @@ async def classify_emails(
     client = AsyncAnthropic()
     semaphore = asyncio.Semaphore(batch_size)
 
-    for i in range(0, len(remaining), batch_size):
-        batch = remaining[i:i + batch_size]
-        tasks = []
-        for email in batch:
-            body = email.body_text or ""
-            if len(body) > MAX_BODY_LENGTH:
-                body = body[:MAX_BODY_LENGTH]
-            user_msg = f"Subject: {email.subject or ''}\nBody:\n{body}"
-            tasks.append(
-                _call_haiku_with_retry(client, user_msg, system_prompt, semaphore)
-            )
+    for i in range(0, len(remaining_ids), batch_size):
+        batch_ids = remaining_ids[i : i + batch_size]
+        try:
+            emails = (await session.execute(
+                select(Email).where(Email.id.in_(batch_ids))
+            )).scalars().all()
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+            tasks = []
+            for email in emails:
+                body = email.body_text or ""
+                if len(body) > MAX_BODY_LENGTH:
+                    body = body[:MAX_BODY_LENGTH]
+                user_msg = f"Subject: {email.subject or ''}\nBody:\n{body}"
+                tasks.append(
+                    _call_haiku_with_retry(client, user_msg, system_prompt, semaphore)
+                )
 
-        for email, api_result in zip(batch, results):
-            if isinstance(api_result, Exception):
-                summary["errors"] += 1
-                continue
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            if api_result is None:
-                summary["errors"] += 1
-                continue
+            for email, api_result in zip(emails, results):
+                if isinstance(api_result, Exception):
+                    summary["errors"] += 1
+                    continue
 
-            email_type = api_result.get("email_type", "real_email")
-            quoted = api_result.get("quoted_emails", [])
+                if api_result is None:
+                    summary["errors"] += 1
+                    continue
 
-            if email_type != "real_email":
-                email.is_auto_reply = True
-                summary["auto_replies_found"] += 1
+                email_type = api_result.get("email_type", "real_email")
+                quoted = api_result.get("quoted_emails", [])
 
-            if quoted:
-                email.quoted_metadata = quoted
-                summary["chains_extracted"] += 1
+                if email_type != "real_email":
+                    email.is_auto_reply = True
+                    summary["auto_replies_found"] += 1
 
-            summary["classified"] += 1
+                # Always set quoted_metadata to mark as processed
+                email.quoted_metadata = quoted if quoted else []
+                if quoted:
+                    summary["chains_extracted"] += 1
 
-        await session.flush()
+                summary["classified"] += 1
+
+            await session.commit()
+        except Exception:
+            logger.exception("Haiku classification batch %d failed", i // batch_size)
+            await session.rollback()
+            summary["batch_errors"] += 1
 
     return summary
