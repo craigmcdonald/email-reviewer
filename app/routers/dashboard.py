@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models import Rep
 from app.services.chain import get_chain_detail, get_rep_chains
 from app.services.export import export_rep_chains, export_rep_emails
-from app.services.rep import get_rep_emails, get_team
+from app.services.rep import get_rep_emails, get_team, get_team_trends
 from app.templating import templates
 
 router = APIRouter()
@@ -30,6 +30,28 @@ def score_class(value) -> str:
     return "score-low"
 
 
+def reply_bar_class(rate) -> str:
+    """Return CSS class for reply rate bar fill."""
+    if rate is None:
+        return ""
+    if rate >= 0.25:
+        return "bar-high"
+    if rate >= 0.15:
+        return "bar-mid"
+    return "bar-low"
+
+
+def resp_time_bar_class(hours) -> str:
+    """Return CSS class for response time bar fill."""
+    if hours is None:
+        return ""
+    if hours <= 8:
+        return "bar-high"
+    if hours <= 24:
+        return "bar-mid"
+    return "bar-low"
+
+
 @router.get("/", include_in_schema=False)
 async def team(
     request: Request,
@@ -42,6 +64,7 @@ async def team(
     result = await get_team(
         session, page=page, per_page=effective_per_page, rep_type=rep_type or None
     )
+    trends = await get_team_trends(session)
     start = (page - 1) * per_page + 1 if per_page else 1
     end = start + len(result["items"]) - 1 if result["items"] else 0
     return templates.TemplateResponse(
@@ -49,7 +72,10 @@ async def team(
         "team.html",
         {
             "rows": result["items"],
+            "trends": trends,
             "score_class": score_class,
+            "reply_bar_class": reply_bar_class,
+            "resp_time_bar_class": resp_time_bar_class,
             "page": result["page"],
             "per_page": per_page,
             "total": result["total"],

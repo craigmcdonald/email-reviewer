@@ -2,48 +2,114 @@
 {% block title %}Team - Email Reviewer{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-6">Team</h1>
-<div class="mb-4 flex items-center gap-3">
-    <label for="rep-type-filter" class="text-sm font-medium text-gray-700">Filter by type:</label>
-    <select id="rep-type-filter" onchange="filterByType(this.value)" class="text-sm border border-gray-300 rounded-md px-3 py-1.5 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-        <option value="" {{ 'selected' if not rep_type_filter }}>All</option>
-        <option value="SDR" {{ 'selected' if rep_type_filter == 'SDR' }}>SDR</option>
-        <option value="BizDev" {{ 'selected' if rep_type_filter == 'BizDev' }}>BizDev</option>
-        <option value="AM" {{ 'selected' if rep_type_filter == 'AM' }}>AM</option>
-        <option value="Non-Sales" {{ 'selected' if rep_type_filter == 'Non-Sales' }}>Non-Sales</option>
-        <option value="Unassigned" {{ 'selected' if rep_type_filter == 'Unassigned' }}>Unassigned</option>
-    </select>
+
+{# --- Trend Cards --- #}
+<div class="trend-row">
+    {% set cards = [
+        ("Outreach Score", trends.outreach_score, false, ""),
+        ("Reply Rate", trends.reply_rate, false, "%"),
+        ("Avg Response Time", trends.avg_response_time, true, "h"),
+    ] %}
+    {% for label, data, inverted, unit in cards %}
+    <div class="trend-card">
+        <div class="trend-label">{{ label }}</div>
+        <div class="trend-value-row">
+            <span class="trend-value">{{ data.value if data.value is not none else "—" }}{{ unit if data.value is not none else "" }}</span>
+            {% if data.delta is not none %}
+                {% if (not inverted and data.delta > 0) or (inverted and data.delta > 0) %}
+                    <span class="trend-delta trend-up">&#9650; {{ "%.1f"|format(data.delta|abs) }}</span>
+                {% elif (not inverted and data.delta < 0) or (inverted and data.delta < 0) %}
+                    <span class="trend-delta trend-down">&#9660; {{ "%.1f"|format(data.delta|abs) }}</span>
+                {% else %}
+                    <span class="trend-delta trend-flat">&#8212; 0.0</span>
+                {% endif %}
+            {% endif %}
+        </div>
+        <div class="trend-sparkline-wrap">
+            <svg class="trend-sparkline" viewBox="0 0 84 24" preserveAspectRatio="none">
+                {% set vals = data.sparkline %}
+                {% set ns = namespace(min_v=None, max_v=None) %}
+                {% for v in vals %}
+                    {% if v is not none %}
+                        {% if ns.min_v is none or v < ns.min_v %}{% set ns.min_v = v %}{% endif %}
+                        {% if ns.max_v is none or v > ns.max_v %}{% set ns.max_v = v %}{% endif %}
+                    {% endif %}
+                {% endfor %}
+                {% if ns.min_v is not none and ns.max_v is not none %}
+                    {% set range_v = ns.max_v - ns.min_v if ns.max_v != ns.min_v else 1 %}
+                    {% for v in vals %}
+                        {% if v is not none %}
+                            {% set x = loop.index0 * 12 + 6 %}
+                            {% set h = ((v - ns.min_v) / range_v) * 18 + 3 %}
+                            <rect x="{{ x - 4 }}" y="{{ 24 - h }}" width="8" height="{{ h }}" rx="1.5"
+                                class="{{ 'sparkline-bar-current' if loop.last else 'sparkline-bar' }}" />
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </svg>
+        </div>
+        <div class="trend-sub">Rolling 30 days &middot; week-on-week</div>
+    </div>
+    {% endfor %}
 </div>
-<div class="bg-white rounded-lg shadow overflow-x-auto">
-    <table class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
+
+{# --- Filter Bar --- #}
+<div class="filter-bar">
+    <div class="filter-left">
+        <label for="rep-type-filter">Filter by type:</label>
+        <select id="rep-type-filter" onchange="filterByType(this.value)">
+            <option value="" {{ 'selected' if not rep_type_filter }}>All</option>
+            <option value="SDR" {{ 'selected' if rep_type_filter == 'SDR' }}>SDR</option>
+            <option value="BizDev" {{ 'selected' if rep_type_filter == 'BizDev' }}>BizDev</option>
+            <option value="AM" {{ 'selected' if rep_type_filter == 'AM' }}>AM</option>
+            <option value="Non-Sales" {{ 'selected' if rep_type_filter == 'Non-Sales' }}>Non-Sales</option>
+            <option value="Unassigned" {{ 'selected' if rep_type_filter == 'Unassigned' }}>Unassigned</option>
+        </select>
+    </div>
+    <span class="filter-window-label">Rolling 30 days</span>
+</div>
+
+{# --- Main Table --- #}
+<div class="team-table-wrap">
+    <table class="team-table">
+        <thead>
+            <tr class="col-group-header">
+                <th colspan="2"></th>
+                <th colspan="3" class="group-outreach">Outreach</th>
+                <th colspan="3" class="group-conversations">Conversations</th>
+            </tr>
             <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rep</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Overall</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Personalisation</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Clarity</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value Prop</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">CTA</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Conversations</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Conversation Score</th>
+                <th class="th-rep">Rep</th>
+                <th class="th-type">Type</th>
+                <th class="th-num">/ Day</th>
+                <th class="th-bar">Reply Rate</th>
+                <th class="th-score">Score</th>
+                <th class="th-num">Unanswered</th>
+                <th class="th-bar">Resp. Time</th>
+                <th class="th-score">Score</th>
             </tr>
         </thead>
-        <tbody class="divide-y divide-gray-200">
+        <tbody>
             {% for row in rows %}
             <tr>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <a href="/reps/{{ row.email }}" class="text-blue-600 hover:underline">{{ row.display_name }}</a>
+                <td data-label="Rep">
+                    <div class="rep-cell">
+                        {% set initials = row.display_name.split()[0][0] ~ (row.display_name.split()[1][0] if row.display_name.split()|length > 1 else '') %}
+                        {% set color_idx = row.email.__hash__() % 5 %}
+                        <span class="rep-avatar avatar-color-{{ color_idx }}">{{ initials }}</span>
+                        <a href="/reps/{{ row.email }}" class="rep-link">{{ row.display_name }}</a>
+                    </div>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap">
+                <td data-label="Type">
                     <div class="rep-type-cell" data-rep-email="{{ row.email }}">
                         {% if row.rep_type %}
                         <span class="rep-type-display inline-flex items-center gap-1.5">
-                            <span class="text-sm font-medium text-gray-900">{{ row.rep_type }}</span>
-                            <button type="button" class="rep-type-edit-btn text-gray-400 hover:text-blue-600 transition-colors" onclick="showTypeEditor(this)" title="Change type">
+                            <span class="rep-type-badge badge-{{ row.rep_type|lower|replace('-', '') }}">{{ row.rep_type }}</span>
+                            <button type="button" class="rep-type-edit-btn" onclick="showTypeEditor(this)" title="Change type">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                             </button>
                         </span>
-                        <select class="rep-type-select hidden text-sm border border-gray-300 rounded-md px-2 py-1 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" data-rep-email="{{ row.email }}" onchange="setRepType(this)" onblur="hideTypeEditor(this)">
+                        <select class="rep-type-select hidden" data-rep-email="{{ row.email }}" onchange="setRepType(this)" onblur="hideTypeEditor(this)">
                             <option value="">-- Cancel --</option>
                             <option value="SDR" {{ 'selected' if row.rep_type == 'SDR' }}>SDR</option>
                             <option value="BizDev" {{ 'selected' if row.rep_type == 'BizDev' }}>BizDev</option>
@@ -52,7 +118,7 @@
                         </select>
                         {% else %}
                         <span class="rep-type-display hidden"></span>
-                        <select class="rep-type-select text-sm border border-gray-300 rounded-md px-2 py-1 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" data-rep-email="{{ row.email }}" onchange="setRepType(this)">
+                        <select class="rep-type-select" data-rep-email="{{ row.email }}" onchange="setRepType(this)">
                             <option value="" selected>Unassigned</option>
                             <option value="SDR">SDR</option>
                             <option value="BizDev">BizDev</option>
@@ -62,23 +128,54 @@
                         {% endif %}
                     </div>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_overall) }}">{{ "%.1f"|format(row.avg_overall) if row.avg_overall is not none else "—" }}</span></td>
-                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_personalisation) }}">{{ "%.1f"|format(row.avg_personalisation) if row.avg_personalisation is not none else "—" }}</span></td>
-                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_clarity) }}">{{ "%.1f"|format(row.avg_clarity) if row.avg_clarity is not none else "—" }}</span></td>
-                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_value_proposition) }}">{{ "%.1f"|format(row.avg_value_proposition) if row.avg_value_proposition is not none else "—" }}</span></td>
-                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_cta) }}">{{ "%.1f"|format(row.avg_cta) if row.avg_cta is not none else "—" }}</span></td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm">{{ row.chain_count or 0 }}</td>
-                <td class="px-6 py-4 whitespace-nowrap"><span class="{{ score_class(row.avg_chain_score) }}">{{ "%.1f"|format(row.avg_chain_score) if row.avg_chain_score is not none else "—" }}</span></td>
+                <td data-label="/ Day" class="text-right">
+                    <span class="metric-num">{{ "%.1f"|format(row.emails_per_day) if row.emails_per_day else "—" }}</span>
+                </td>
+                <td data-label="Reply Rate">
+                    {% if row.reply_rate is not none %}
+                    {% set pct = (row.reply_rate * 100)|round|int %}
+                    {% set bar_w = [pct * 2, 100]|min %}
+                    <div class="ratio-bar-cell">
+                        <div class="ratio-bar-track"><div class="ratio-bar-fill {{ reply_bar_class(row.reply_rate) }}" style="width:{{ bar_w }}%"></div></div>
+                        <span class="ratio-pct {{ score_class(7 if pct >= 25 else (5 if pct >= 15 else 3)) }}">{{ pct }}%</span>
+                    </div>
+                    {% else %}
+                    <span class="metric-muted">—</span>
+                    {% endif %}
+                </td>
+                <td data-label="Outreach Score">
+                    <span class="{{ score_class(row.avg_overall) }} score-num">{{ "%.1f"|format(row.avg_overall) if row.avg_overall is not none else "—" }}</span>
+                </td>
+                <td data-label="Unanswered" class="text-center">
+                    {% set unanswered = row.unanswered_count or 0 %}
+                    <span class="{{ 'unanswered-some' if unanswered > 0 else 'unanswered-zero' }}">{{ unanswered }}</span>
+                </td>
+                <td data-label="Resp. Time">
+                    {% if row.avg_response_hours is not none %}
+                    {% set hours = row.avg_response_hours %}
+                    {% set bar_w = [(hours / 48 * 100)|round|int, 100]|min %}
+                    <div class="ratio-bar-cell">
+                        <div class="ratio-bar-track"><div class="ratio-bar-fill {{ resp_time_bar_class(hours) }}" style="width:{{ bar_w }}%"></div></div>
+                        <span class="ratio-pct {{ score_class(7 if hours <= 8 else (5 if hours <= 24 else 3)) }}">{{ "%.0f"|format(hours) }}h</span>
+                    </div>
+                    {% else %}
+                    <span class="metric-muted">—</span>
+                    {% endif %}
+                </td>
+                <td data-label="Conv. Score">
+                    <span class="{{ score_class(row.avg_conv_score) }} score-num">{{ "%.1f"|format(row.avg_conv_score) if row.avg_conv_score is not none else "—" }}</span>
+                </td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="9" class="px-6 py-4 text-center text-gray-500">No reps found.</td>
+                <td colspan="8" class="empty-state">No reps found.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 {% include "_pagination.html" %}
+
 <script>
 function filterByType(value) {
     const params = new URLSearchParams(window.location.search);
@@ -100,7 +197,6 @@ function showTypeEditor(btn) {
 }
 
 function hideTypeEditor(selectEl) {
-    // Delay to allow onchange to fire before hiding
     setTimeout(function() {
         const cell = selectEl.closest('.rep-type-cell');
         const display = cell.querySelector('.rep-type-display');

@@ -316,7 +316,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 
 | Route | View |
 |-------|------|
-| `GET /` | Team page - rep table with colour-coded average scores. Type column shows the assigned type with an edit icon that reveals a dropdown on click; unassigned reps show a dropdown directly. Filter dropdown above the table filters by rep type (SDR, BizDev, AM, Non-Sales, Unassigned). Accepts `?page=1&per_page=20&rep_type=` query params for pagination and filtering. `per_page=0` returns all results. |
+| `GET /` | Team dashboard with trend cards (outreach score, reply rate, avg response time — each with 30d value, week-on-week delta, 7-week sparkline) and a two-group rep table. Outreach group: emails/day (30d), reply rate with bar (30d), outreach score (30d). Conversations group: unanswered count (current), response time with bar (30d), conversation score (30d). Rep rows show initials avatar and type badge with inline edit. Responsive: sparklines hidden on tablet, card layout on mobile. Filter dropdown filters by rep type (SDR, BizDev, AM, Non-Sales, Unassigned). Accepts `?page=1&per_page=20&rep_type=` query params. |
 | `GET /reps/{rep_email}` | Rep detail page with three sections: Outreach (standalone/first-in-sequence outgoing emails), Follow-ups (subsequent sends to same recipient/subject with no reply), Conversations (back-and-forth chains with chain scores). All three sections are always shown and have identical filter/search/pagination structure. Each section uses prefixed query params: `o_` (outreach), `f_` (follow-ups), `c_` (conversations). Conversations section has an additional `c_status` filter (unanswered/answered). Params: `{prefix}_page`, `{prefix}_per_page`, `{prefix}_search`, `{prefix}_date_from`, `{prefix}_date_to`, `{prefix}_score_min`, `{prefix}_score_max`. |
 | `GET /reps/{rep_email}/export` | Downloads an Excel (.xlsx) file. Accepts `?section=` (outreach, follow_ups, conversations) to select which section to export, plus filter query params and `?export_all=true`. |
 | `GET /chains/{chain_id}` | Chain detail page — full conversation thread in chronological order. Each email shows direction, sender, recipient, timestamp, subject, body preview, and individual score. Chain score panel at top with all 4 dimensions and avg_response_hours. Accessed from the rep detail page's Chains section. |
@@ -331,7 +331,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 
 | Route | Response |
 |-------|----------|
-| `GET /api/reps` | List of `RepTeamRow` objects sorted by overall avg descending. Each object includes `rep_type`, `chain_count` and `avg_chain_score` fields. |
+| `GET /api/reps` | List of `RepTeamRow` objects sorted by 30d outreach score descending. Each object includes `rep_type`, rolling 30-day metrics (`emails_per_day`, `reply_rate`, `avg_overall`, `unanswered_count`, `avg_response_hours`, `avg_conv_score`). |
 | `PATCH /api/reps/{rep_email}` | Partial update of rep fields (e.g. `rep_type`). Rejects invalid `rep_type` values with 422. Returns updated `RepResponse`. |
 | `GET /api/reps/{rep_email}/emails` | Scored emails for one rep, ordered by date descending |
 | `GET /api/reps/{rep_email}/chains` | Paginated chains where the rep is a sender. Returns `{items, total, page, per_page}`. |
@@ -364,7 +364,8 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 
 Async query functions used by both routers:
 
-- `get_team(session, *, page=1, per_page=20, rep_type=None)` — JOINs emails/scores/reps, GROUPs BY rep, computes AVGs (including `chain_count` and `avg_chain_score`), sorts by overall descending. Returns paginated dict `{items, total, page, per_page, pages}`. Pass `per_page=None` or `0` to return all results. Optional `rep_type` filter: pass a RepType value (SDR, BizDev, AM, Non-Sales) to filter by assigned type, or "Unassigned" to show only reps with no type set.
+- `get_team(session, *, page=1, per_page=20, rep_type=None)` — Rolling 30-day metrics per rep: emails/day, reply rate, outreach score (avg overall), unanswered count (current, not windowed), avg response hours, conversation score. Sorted by outreach score descending. Returns paginated dict `{items, total, page, per_page, pages}`. Pass `per_page=None` or `0` to return all results. Optional `rep_type` filter: pass a RepType value (SDR, BizDev, AM, Non-Sales) to filter by assigned type, or "Unassigned" to show only reps with no type set.
+- `get_team_trends(session)` — Trend card data for the team dashboard. Returns outreach score, reply rate, and avg response time, each with: current 30d value, week-on-week delta (inverted for response time — faster is better), and 7-week sparkline.
 - `get_rep_emails(session, rep_email, *, page=1, per_page=20, search=None, date_from=None, date_to=None, score_min=None, score_max=None, email_type=None)` — scored emails for one rep, ordered by date descending. Returns paginated dict `{items, total, page, per_page, pages}`. Pass `per_page=None` or `0` to return all results. Optional filters: `search` (ILIKE on subject/body_text), `date_from`/`date_to` (inclusive range on timestamp), `score_min`/`score_max` (inclusive range on overall score), `email_type` (`"outreach"` for standalone/first-in-sequence emails with no chain_id, `"follow_up"` for subsequent sends to the same recipient with same normalized subject and no chain_id). Filters apply before pagination; total reflects the filtered count.
 - `get_email_detail(session, email_id)` — single email with its score (eager loaded)
 - `get_stats(session)` — summary counts (total_emails, total_scored, total_reps) and avg_overall
@@ -384,7 +385,7 @@ Shared `Jinja2Templates` instance with a `static_url()` global that appends an M
 
 `app/static/css/tailwind.css` is a pre-built Tailwind CSS file generated by the Tailwind CLI from `app/static/css/input.css`. Rebuild after changing Tailwind classes in templates: `npx @tailwindcss/cli -i app/static/css/input.css -o app/static/css/tailwind.css --minify`.
 
-`app/static/css/style.css` provides score colour utility classes (`score-high`, `score-mid`, `score-low`) keyed to score thresholds (>=7 green, >=4 yellow, <4 red). Static files are mounted at `/static`.
+`app/static/css/style.css` provides score colour utility classes (`score-high`, `score-mid`, `score-low`) keyed to score thresholds (>=7 green, >=4 yellow, <4 red), plus team page styles: trend cards with sparklines, ratio bars for reply rate and response time, avatar colours, type badges, responsive breakpoints (tablet hides sparklines, mobile converts table rows to cards with data-label attributes). Static files are mounted at `/static`.
 
 ## Settings
 

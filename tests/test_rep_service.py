@@ -65,10 +65,9 @@ class TestGetTeamPagination:
         row = result["items"][0]
         assert row.email == "new@x.com"
         assert row.avg_overall is None
-        assert row.avg_personalisation is None
-        assert row.avg_clarity is None
-        assert row.avg_value_proposition is None
-        assert row.avg_cta is None
+        assert row.emails_per_day is None
+        assert row.reply_rate is None
+        assert row.avg_conv_score is None
 
     async def test_per_page_zero_returns_all(self, db, make_rep, make_email, make_score):
         for i in range(5):

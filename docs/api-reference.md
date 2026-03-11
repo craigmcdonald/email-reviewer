@@ -6,7 +6,7 @@ All JSON API endpoints are prefixed with `/api`. HTML views are excluded from th
 
 ### GET /api/reps
 
-List all reps with aggregated score averages, sorted by overall average descending.
+List all reps with rolling 30-day metrics, sorted by outreach score descending.
 
 **Response**: `list[RepTeamRow]`
 
@@ -17,13 +17,12 @@ Each object includes:
 | email | string | Rep email address |
 | display_name | string | Normalised display name |
 | rep_type | string \| null | SDR, BizDev, AM, or null if untyped |
-| avg_personalisation | float | Average personalisation score |
-| avg_clarity | float | Average clarity score |
-| avg_value_proposition | float | Average value_proposition score |
-| avg_cta | float | Average cta score |
-| avg_overall | float | Average overall score |
-| chain_count | integer | Number of conversation chains involving this rep |
-| avg_chain_score | float | Average chain-level conversation_quality score |
+| emails_per_day | float \| null | Outgoing emails per day (30d window) |
+| reply_rate | float \| null | Fraction of outgoing emails in chains with replies (30d window) |
+| avg_overall | float \| null | Average outreach score (30d window) |
+| unanswered_count | integer \| null | Chains where rep has outgoing email and is_unanswered = true (current state) |
+| avg_response_hours | float \| null | Average response time in hours (30d window) |
+| avg_conv_score | float \| null | Average conversation quality score (30d window) |
 
 ### PATCH /api/reps/{rep_email}
 

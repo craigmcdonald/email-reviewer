@@ -14,6 +14,8 @@
 
 Read `docs/testing-guide.md` before writing or modifying any test.
 
+PostgreSQL is installed and available in this environment. Start it with `service postgresql start` if it's not running. The test database is `email_reviewer_test` on localhost:5432 (user: `test`, password: `test`). Always run tests — do not skip them.
+
 ## Documentation
 
 When making a change that affects documented behaviour (new endpoints, model changes, config changes, enum additions, migration additions), update the relevant docs. When adding a new feature, review existing documentation in its entirety rather than just appending a new section. Other parts of the docs may reference the area you changed and need updating to stay accurate.
