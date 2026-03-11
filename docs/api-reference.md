@@ -174,7 +174,7 @@ Start an Excel export operation.
 
 ### POST /api/operations/chain-build
 
-Rebuild conversation chains from email threading data. Splits email threads into individual messages first, then builds chains. Returns 202 with job record. Rejects 409 if a CHAIN_BUILD job is already RUNNING.
+Rebuild conversations. Runs a three-stage pipeline: (1) classify unclassified emails, (2) split email threads into individual messages, (3) build conversation chains. Returns 202 with job record. Rejects 409 if a CHAIN_BUILD job is already RUNNING.
 
 **Response**: `JobResponse` (202)
 

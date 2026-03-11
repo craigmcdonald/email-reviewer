@@ -307,18 +307,32 @@ async def run_chain_build_job(
             await s.commit()
 
             summary: dict = {}
+            stage_errors: list[str] = []
 
-            # Split threads before building chains
+            # Stage 1: Classify unclassified emails so quoted_metadata is populated
+            try:
+                classify_result = await classify_emails(s)
+                summary["classified"] = classify_result.get("classified", 0)
+                summary["auto_replies"] = classify_result.get("auto_replies_found", 0)
+            except Exception as exc:
+                logger.exception("Chain build job %d: classify stage failed", job_id)
+                stage_errors.append(f"classify: {exc}")
+
+            # Stage 2: Split threads (requires quoted_metadata from classification)
             try:
                 split_result = await split_email_threads(s)
                 summary["threads_split"] = split_result.get("threads_split", 0)
                 summary["messages_created"] = split_result.get("messages_created", 0)
             except Exception as exc:
                 logger.exception("Chain build job %d: thread split stage failed", job_id)
-                summary["thread_split_error"] = str(exc)
+                stage_errors.append(f"thread_split: {exc}")
 
+            # Stage 3: Build conversation chains
             chain_result = await build_chains(s)
             summary.update(chain_result)
+
+            if stage_errors:
+                summary["stage_errors"] = stage_errors
 
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()

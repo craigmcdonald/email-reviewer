@@ -580,14 +580,14 @@ def _mock_haiku(text: str):
 class TestRunChainBuildJob:
     @patch("app.services.thread_splitter.AsyncAnthropic")
     async def test_splits_threads_then_builds_chains(
-        self, mock_anthropic_cls, db, make_email, make_job, make_settings
+        self, mock_split_anthropic, db, make_email, make_job, make_settings
     ):
-        """Integration test: creates real email data, runs the full chain build
-        job, and verifies both thread splitting and chain building happened."""
+        """Integration test: creates real email data with quoted_metadata already
+        set (as if classification already ran), runs the full chain build job,
+        and verifies thread splitting creates child emails and chains are built."""
         await make_settings()
 
-        # Create a thread email that should be split: has quoted_metadata,
-        # is_thread_split=False, body contains "From:" indicator
+        # Email already classified (quoted_metadata set) but not yet split
         parent = await make_email(
             from_email="priyanka@nativecampusadvertising.com",
             to_email="mark@prospect.com",
@@ -602,7 +602,7 @@ class TestRunChainBuildJob:
         await db.commit()
 
         mock_client = AsyncMock()
-        mock_anthropic_cls.return_value = mock_client
+        mock_split_anthropic.return_value = mock_client
         mock_client.messages.create.return_value = _mock_haiku(_HAIKU_SPLIT_RESPONSE)
 
         from app.services.job_runner import run_chain_build_job
@@ -629,23 +629,56 @@ class TestRunChainBuildJob:
         # Verify chain building also ran (chains_created key present)
         assert "chains_created" in updated.result_summary
 
-    @patch("app.services.thread_splitter.AsyncAnthropic")
-    async def test_no_candidates_still_builds_chains(
-        self, mock_anthropic_cls, db, make_email, make_job, make_settings
+    @patch("app.services.classifier.AsyncAnthropic")
+    async def test_classifies_then_splits_unclassified_emails(
+        self, mock_classifier_anthropic, db, make_email, make_job, make_settings
     ):
-        """When there are no emails to split, chain building still runs."""
+        """Unclassified emails (quoted_metadata=None) get classified first,
+        which populates quoted_metadata, enabling thread splitting on the next stage."""
         await make_settings()
 
-        # Email with no quoted_metadata — not a candidate for splitting
+        # Unclassified email — quoted_metadata is None, like a freshly fetched email
         await make_email(
-            from_email="alice@nativecampusadvertising.com",
-            to_email="bob@prospect.com",
-            subject="Hello",
-            body_text="Just a plain email.",
+            from_email="priyanka@nativecampusadvertising.com",
+            to_email="mark@prospect.com",
+            subject="Re: Partnership Opportunity",
+            body_text=_THREAD_BODY,
             direction="EMAIL",
             quoted_metadata=None,
             is_thread_split=False,
+            is_auto_reply=False,
         )
+        job = await make_job(job_type=JobType.CHAIN_BUILD)
+        await db.commit()
+
+        # Mock classifier Haiku response — classifies as real_email with quoted emails
+        classify_response = json.dumps({
+            "email_type": "real_email",
+            "quoted_emails": [
+                {"from_email": "mark@prospect.com", "subject": "Re: Partnership Opportunity", "date": None},
+            ],
+        })
+        mock_client = AsyncMock()
+        mock_classifier_anthropic.return_value = mock_client
+        mock_client.messages.create.return_value = _mock_haiku(classify_response)
+
+        from app.services.job_runner import run_chain_build_job
+
+        await run_chain_build_job(db, job.job_id)
+
+        result = await db.execute(select(Job).where(Job.job_id == job.job_id))
+        updated = result.scalar_one()
+        assert updated.status == JobStatus.COMPLETED
+        # Classification ran
+        assert updated.result_summary["classified"] == 1
+        # Chains built
+        assert "chains_created" in updated.result_summary
+
+    async def test_no_emails_completes_immediately(
+        self, db, make_job, make_settings
+    ):
+        """With no emails at all, all three stages return quickly with zero counts."""
+        await make_settings()
         job = await make_job(job_type=JobType.CHAIN_BUILD)
         await db.commit()
 
@@ -658,15 +691,11 @@ class TestRunChainBuildJob:
         assert updated.status == JobStatus.COMPLETED
         assert updated.result_summary["threads_split"] == 0
         assert updated.result_summary["messages_created"] == 0
-        # Chains still built
         assert "chains_created" in updated.result_summary
-
-        # Haiku was never called since there were no candidates
-        mock_anthropic_cls.assert_not_called()
 
     @patch("app.services.thread_splitter.AsyncAnthropic")
     async def test_already_split_emails_skipped(
-        self, mock_anthropic_cls, db, make_email, make_job, make_settings
+        self, mock_split_anthropic, db, make_email, make_job, make_settings
     ):
         """Emails with is_thread_split=True are not re-processed."""
         await make_settings()
@@ -692,12 +721,12 @@ class TestRunChainBuildJob:
         assert updated.status == JobStatus.COMPLETED
         assert updated.result_summary["threads_split"] == 0
 
-        # Haiku was never called
-        mock_anthropic_cls.assert_not_called()
+        # Thread splitter Haiku was never called
+        mock_split_anthropic.assert_not_called()
 
     @patch("app.services.thread_splitter.AsyncAnthropic")
     async def test_thread_split_error_does_not_block_chain_build(
-        self, mock_anthropic_cls, db, make_email, make_job, make_settings
+        self, mock_split_anthropic, db, make_email, make_job, make_settings
     ):
         """If thread splitting fails, chain building still proceeds."""
         await make_settings()
@@ -715,7 +744,7 @@ class TestRunChainBuildJob:
         await db.commit()
 
         mock_client = AsyncMock()
-        mock_anthropic_cls.return_value = mock_client
+        mock_split_anthropic.return_value = mock_client
         mock_client.messages.create.side_effect = RuntimeError("API down")
 
         from app.services.job_runner import run_chain_build_job
@@ -724,7 +753,7 @@ class TestRunChainBuildJob:
 
         result = await db.execute(select(Job).where(Job.job_id == job.job_id))
         updated = result.scalar_one()
-        # Job still completes — thread split error is recorded but doesn't block chains
+        # Job still completes — thread split error doesn't block chains
         assert updated.status == JobStatus.COMPLETED
         assert "chains_created" in updated.result_summary
 
