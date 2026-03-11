@@ -4,7 +4,7 @@
 {% block content %}
 <style>
 /* Feed page styles */
-.feed-container { max-width: 900px; margin: 0 auto; }
+.feed-container { }
 
 /* Filter bar */
 .feed-filter-bar { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); margin-bottom: 20px; overflow: hidden; }
@@ -229,7 +229,7 @@
                     </div>
                     <div class="feed-meta">
                         <span class="feed-time">{% if item.sort_date %}{{ item.sort_date.strftime('%m-%d %H:%M') }}{% endif %}</span>
-                        <span class="feed-score-badge {{ score_class(item.score) }}">{{ item.score if item.score is not none else '&mdash;' }}</span>
+                        <span class="feed-score-badge {{ score_class(item.score) }}">{{ item.score if item.score is not none else '—' }}</span>
                     </div>
                 </div>
                 <div class="expand-panel">
@@ -265,7 +265,7 @@
                     </div>
                     <div class="feed-meta">
                         <span class="feed-time">{% if item.sort_date %}{{ item.sort_date.strftime('%m-%d %H:%M') }}{% endif %}</span>
-                        <span class="feed-score-badge {{ score_class(item.score) }}">{{ item.score if item.score is not none else '&mdash;' }}</span>
+                        <span class="feed-score-badge {{ score_class(item.score) }}">{{ item.score if item.score is not none else '—' }}</span>
                     </div>
                 </div>
                 <div class="thread-panel">
@@ -412,6 +412,7 @@ function loadThread(chainId) {
                     html += '<div class="thread-ai-notes">' + escapeHtml(e.score.notes) + '</div>';
                 }
                 html += '<div class="thread-body-scroll"><pre class="thread-body">' + escapeHtml(stripSig(e.body_text || '')) + '</pre></div>';
+                html += '<a class="full-email-link" onclick="event.stopPropagation(); openThreadEmailModal(this)" data-subject="' + escapeAttr(e.subject || '') + '" data-from="' + escapeAttr(e.from_name || e.from_email || '') + '" data-to="' + escapeAttr(e.to_name || e.to_email || '') + '" data-date="' + escapeAttr(e.timestamp ? e.timestamp.substring(0, 16).replace('T', ' ') : '') + '" data-body="' + escapeAttr(e.body_text || '') + '" data-notes="' + escapeAttr(isOut && e.score && e.score.notes ? e.score.notes : '') + '">View full email with signature</a>';
                 html += '</div></div>';
             }
             container.innerHTML = html;
@@ -431,6 +432,27 @@ function escapeHtml(t) {
     var d = document.createElement('div');
     d.textContent = t;
     return d.innerHTML;
+}
+
+function escapeAttr(t) {
+    return (t || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function openThreadEmailModal(btn) {
+    document.getElementById('modal-subject').textContent = btn.dataset.subject;
+    document.getElementById('modal-from').textContent = 'From: ' + (btn.dataset.from || '');
+    document.getElementById('modal-to').textContent = 'To: ' + (btn.dataset.to || '');
+    document.getElementById('modal-date').textContent = btn.dataset.date || '';
+    document.getElementById('modal-body').textContent = btn.dataset.body || '';
+    var nw = document.getElementById('modal-notes-wrap');
+    if (btn.dataset.notes) {
+        document.getElementById('modal-notes').textContent = btn.dataset.notes;
+        nw.style.display = 'flex';
+    } else {
+        nw.style.display = 'none';
+    }
+    document.getElementById('email-modal').classList.add('visible');
+    document.body.style.overflow = 'hidden';
 }
 
 function openFeedModal(emailId) {

@@ -84,6 +84,7 @@ async def team(
             "start": start,
             "end": end,
             "rep_type_filter": rep_type,
+            "active_nav": "team",
         },
     )
 
