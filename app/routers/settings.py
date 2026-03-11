@@ -29,6 +29,7 @@ async def patch_settings(
 async def settings_defaults():
     return {
         "initial_email_prompt_blocks": SETTINGS_SEED["initial_email_prompt_blocks"],
+        "follow_up_email_prompt_blocks": SETTINGS_SEED["follow_up_email_prompt_blocks"],
         "chain_email_prompt_blocks": SETTINGS_SEED["chain_email_prompt_blocks"],
         "chain_evaluation_prompt_blocks": SETTINGS_SEED["chain_evaluation_prompt_blocks"],
     }
