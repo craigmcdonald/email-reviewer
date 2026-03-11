@@ -7,6 +7,7 @@ from app.models.email import Email
 from app.models.rep import Rep
 from app.services.fetcher import (
     _parse_timestamp,
+    _resolve_name,
     fetch_and_store,
     fetch_emails_from_hubspot,
     filter_relevant_emails,
@@ -498,3 +499,80 @@ class TestFetchAndStoreMaxCount:
         result = await db.execute(select(Email))
         rows = result.scalars().all()
         assert len(rows) == 2
+
+
+class TestResolveName:
+    def test_returns_first_last_when_not_derived_from_email(self):
+        assert _resolve_name("Kieran Berry", "Campbell", "kieranberrycampbell@example.com") == "Kieran Berry Campbell"
+
+    def test_returns_local_part_when_name_matches_email(self):
+        assert _resolve_name("Satvir", "Singh", "satvirsingh@example.com") == "satvirsingh"
+
+    def test_returns_local_part_case_insensitive(self):
+        assert _resolve_name("Satvi", "Rsingh", "Satvirsingh@example.com") == "Satvirsingh"
+
+    def test_returns_empty_string_when_both_parts_empty(self):
+        assert _resolve_name("", "", "anyone@example.com") == ""
+
+    def test_returns_first_only_when_last_empty_and_not_matching(self):
+        assert _resolve_name("Acomb Travel", "", "bookings@example.com") == "Acomb Travel"
+
+    def test_returns_local_part_when_first_only_matches(self):
+        assert _resolve_name("bookings", "", "bookings@example.com") == "bookings"
+
+
+class TestEmailCaseNormalization:
+    async def test_stores_from_email_lowercase(self, db):
+        email = make_hubspot_email(
+            id="case-test",
+            hs_email_from_email="IndERpalGill@NativeCampusAdvertising.com",
+            hs_email_from_firstname="Inderpal",
+            hs_email_from_lastname="Gill",
+        )
+        await upsert_emails_to_db(db, [email])
+
+        result = await db.execute(select(Email))
+        row = result.scalar_one()
+        assert row.from_email == "inderpalgill@nativecampusadvertising.com"
+
+    async def test_stores_to_email_lowercase(self, db):
+        email = make_hubspot_email(
+            id="case-to-test",
+            hs_email_to_email="Contact@SomeBusiness.COM",
+        )
+        await upsert_emails_to_db(db, [email])
+
+        result = await db.execute(select(Email))
+        row = result.scalar_one()
+        assert row.to_email == "contact@somebusiness.com"
+
+    async def test_rep_created_with_lowercase_email(self, db):
+        email = make_hubspot_email(
+            id="rep-case-test",
+            hs_email_direction="EMAIL",
+            hs_email_from_email="IndERpalGill@NativeCampusAdvertising.com",
+            hs_email_from_firstname="Inderpal",
+            hs_email_from_lastname="Gill",
+        )
+        await upsert_emails_to_db(db, [email])
+
+        result = await db.execute(select(Rep))
+        rep = result.scalar_one()
+        assert rep.email == "inderpalgill@nativecampusadvertising.com"
+
+    async def test_no_duplicate_rep_for_different_casing(self, db):
+        email1 = make_hubspot_email(
+            id="case-dup-1",
+            hs_email_direction="EMAIL",
+            hs_email_from_email="IndERpalGill@nativecampusadvertising.com",
+        )
+        email2 = make_hubspot_email(
+            id="case-dup-2",
+            hs_email_direction="EMAIL",
+            hs_email_from_email="inderpalgill@nativecampusadvertising.com",
+        )
+        await upsert_emails_to_db(db, [email1, email2])
+
+        result = await db.execute(select(Rep))
+        reps = result.scalars().all()
+        assert len(reps) == 1

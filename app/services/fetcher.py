@@ -149,6 +149,23 @@ def _coerce_int(value: str | None) -> int | None:
         return None
 
 
+def _resolve_name(first: str, last: str, email_address: str) -> str:
+    """Build a display name from HubSpot's firstname/lastname fields.
+
+    HubSpot sometimes guesses the name by splitting the email local part
+    (e.g. "satvirsingh" -> first="Satvi", last="Rsingh"). When the
+    concatenation of first+last matches the local part, the split is
+    unreliable so we use the local part as-is.
+    """
+    if not first and not last:
+        return ""
+    combined = f"{first}{last}"
+    local_part = email_address.split("@")[0] if "@" in email_address else ""
+    if local_part and combined.lower() == local_part.lower():
+        return local_part
+    return f"{first} {last}".strip()
+
+
 def _parse_email(result: dict) -> dict:
     """Extract a flat email dict from a HubSpot search result object."""
     props = result.get("properties", {})
@@ -156,14 +173,16 @@ def _parse_email(result: dict) -> dict:
     last = props.get("hs_email_from_lastname") or ""
     to_first = props.get("hs_email_to_firstname") or ""
     to_last = props.get("hs_email_to_lastname") or ""
+    from_email = (props.get("hs_email_from_email") or "").lower()
+    to_email = (props.get("hs_email_to_email") or "").lower()
     return {
         "id": result["id"],
         "timestamp": _parse_timestamp(props.get("hs_timestamp")),
         "subject": props.get("hs_email_subject", ""),
-        "from_email": props.get("hs_email_from_email", ""),
-        "from_name": f"{first} {last}".strip(),
-        "to_email": props.get("hs_email_to_email", ""),
-        "to_name": f"{to_first} {to_last}".strip(),
+        "from_email": from_email,
+        "from_name": _resolve_name(first, last, from_email),
+        "to_email": to_email,
+        "to_name": _resolve_name(to_first, to_last, to_email),
         "direction": props.get("hs_email_direction", ""),
         "body_text": props.get("hs_email_text", ""),
         "open_count": _coerce_int(props.get("hs_email_open_count")),

@@ -44,9 +44,9 @@ Seven tables:
 | hubspot_id | String | HubSpot email ID, used for upsert deduplication |
 | timestamp | DateTime | When the email was sent |
 | from_name | String | Sender display name |
-| from_email | String | Sender address (NOT NULL) |
+| from_email | String | Sender address (NOT NULL, stored lowercase) |
 | to_name | String | Recipient display name |
-| to_email | String | Recipient address |
+| to_email | String | Recipient address (stored lowercase) |
 | subject | String | Email subject line |
 | body_text | Text | Plain-text body |
 | direction | String | EMAIL, INCOMING_EMAIL, or FORWARDED_EMAIL |
@@ -191,7 +191,7 @@ Managed by Alembic with async support. The `alembic/env.py` file converts Postgr
 1. Calls `fetch_emails_from_hubspot()` to paginate through HubSpot search results with retry logic (exponential backoff on errors, respects `Retry-After` on 429s). When `max_count` is set, passes `max_results=int(max_count * 1.5)` to stop pagination early — the 1.5x multiplier accounts for irrelevant emails that will be filtered out. HubSpot's search API has a 10,000 result paging limit; when hit, the fetcher automatically subdivides the date range into halves and fetches each recursively, deduplicating by HubSpot ID at the boundary.
 2. Calls `filter_relevant_emails()` to keep emails involving company reps. EMAIL direction is kept when the from_email domain is in company_domains (outgoing from our rep), unless the subject starts with `Email: >>` (HubSpot activity log records, not real emails). INCOMING_EMAIL direction is kept when the to_email domain is in company_domains (reply to our rep). FORWARDED_EMAIL and all other directions are dropped.
 3. Applies `max_count` (if provided) to the filtered list, limiting stored emails.
-4. Calls `upsert_emails_to_db()` to upsert on `hubspot_id` and auto-create Rep records for new sender addresses (outgoing emails only). Parses `hs_timestamp` from HubSpot into the `timestamp` column. Stores engagement metrics (open_count, click_count, reply_count) and threading headers (message_id, in_reply_to, thread_id).
+4. Calls `upsert_emails_to_db()` to upsert on `hubspot_id` and auto-create Rep records for new sender addresses (outgoing emails only). All email addresses (`from_email`, `to_email`) are normalized to lowercase on storage for case-insensitive matching. Display names from HubSpot's firstname/lastname fields are checked against the email local part — when the concatenation matches (indicating HubSpot guessed the name split from the address), the raw local part is used instead to avoid inconsistent splits. Parses `hs_timestamp` from HubSpot into the `timestamp` column. Stores engagement metrics (open_count, click_count, reply_count) and threading headers (message_id, in_reply_to, thread_id).
 
 Returns the number of emails stored.
 
