@@ -345,7 +345,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 |-------|----------|
 | `GET /api/settings` | Current `SettingsResponse` |
 | `PATCH /api/settings` | Partial update, returns updated `SettingsResponse` |
-| `GET /api/settings/defaults` | Default prompt block objects for `initial_email_prompt_blocks`, `follow_up_email_prompt_blocks`, `chain_evaluation_prompt_blocks`. |
+| `GET /api/settings/defaults` | Default prompt block objects for `initial_email_prompt_blocks`, `follow_up_email_prompt_blocks`, `chain_email_prompt_blocks`, `chain_evaluation_prompt_blocks`. |
 
 ### Operations API (`app/routers/operations.py`)
 
