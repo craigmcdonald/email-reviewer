@@ -1,6 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
+
+
+def _recent():
+    """Timestamp within the 30-day window."""
+    return datetime.utcnow() - timedelta(days=5)
 
 
 class TestGetReps:
@@ -9,12 +14,18 @@ class TestGetReps:
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_returns_rep_objects_with_avg_score_fields(
+    async def test_returns_rep_objects_with_windowed_fields(
         self, client, make_rep, make_email, make_score
     ):
         await make_rep(email="rep@example.com", display_name="Rep One")
-        email = await make_email(from_email="rep@example.com")
-        await make_score(email_id=email.id, overall=8, clarity=9)
+        email = await make_email(
+            from_email="rep@example.com",
+            direction="EMAIL",
+            timestamp=_recent(),
+        )
+        await make_score(
+            email_id=email.id, overall=8, clarity=9, scored_at=_recent()
+        )
 
         resp = await client.get("/api/reps")
         assert resp.status_code == 200
@@ -23,62 +34,83 @@ class TestGetReps:
         row = data[0]
         assert row["email"] == "rep@example.com"
         assert row["avg_overall"] is not None
-        assert row["avg_clarity"] is not None
-        assert row["avg_personalisation"] is not None
-        assert row["avg_value_proposition"] is not None
-        assert row["avg_cta"] is not None
+        assert row["emails_per_day"] is not None
 
-    async def test_returns_rep_objects_with_chain_count_field(
-        self, client, make_rep, make_email, make_score, make_chain
+    async def test_unanswered_count_returned(
+        self, client, make_rep, make_email, make_chain
     ):
         await make_rep(email="rep@example.com", display_name="Rep One")
-        chain = await make_chain(normalized_subject="Thread")
-        email = await make_email(
-            from_email="rep@example.com", chain_id=chain.id
+        chain = await make_chain(
+            normalized_subject="Thread", is_unanswered=True
         )
-        await make_score(email_id=email.id, overall=8)
+        await make_email(
+            from_email="rep@example.com",
+            chain_id=chain.id,
+            direction="EMAIL",
+        )
 
         resp = await client.get("/api/reps")
         data = resp.json()
         assert len(data) == 1
-        assert data[0]["chain_count"] == 1
+        assert data[0]["unanswered_count"] == 1
 
-    async def test_returns_rep_objects_with_avg_chain_score(
-        self, client, make_rep, make_email, make_score, make_chain, make_chain_score
+    async def test_conv_score_returned(
+        self, client, make_rep, make_email, make_chain, make_chain_score
     ):
         await make_rep(email="rep@example.com", display_name="Rep One")
         chain = await make_chain(normalized_subject="Thread")
-        email = await make_email(
-            from_email="rep@example.com", chain_id=chain.id
+        await make_email(
+            from_email="rep@example.com",
+            chain_id=chain.id,
+            direction="EMAIL",
         )
-        await make_score(email_id=email.id, overall=8)
-        await make_chain_score(chain_id=chain.id, conversation_quality=9)
+        await make_chain_score(
+            chain_id=chain.id,
+            conversation_quality=9,
+            scored_at=_recent(),
+        )
 
         resp = await client.get("/api/reps")
         data = resp.json()
-        assert data[0]["avg_chain_score"] == 9.0
+        assert data[0]["avg_conv_score"] == 9.0
 
-    async def test_avg_chain_score_null_when_no_chains(
+    async def test_conv_score_null_when_no_chains(
         self, client, make_rep, make_email, make_score
     ):
         await make_rep(email="rep@example.com", display_name="Rep One")
-        email = await make_email(from_email="rep@example.com")
-        await make_score(email_id=email.id, overall=8)
+        email = await make_email(
+            from_email="rep@example.com",
+            direction="EMAIL",
+            timestamp=_recent(),
+        )
+        await make_score(email_id=email.id, overall=8, scored_at=_recent())
 
         resp = await client.get("/api/reps")
         data = resp.json()
-        assert data[0]["avg_chain_score"] is None
+        assert data[0]["avg_conv_score"] is None
 
     async def test_results_sorted_by_overall_avg_descending(
         self, client, make_rep, make_email, make_score
     ):
         await make_rep(email="low@example.com", display_name="Low Rep")
-        email_low = await make_email(from_email="low@example.com")
-        await make_score(email_id=email_low.id, overall=3)
+        email_low = await make_email(
+            from_email="low@example.com",
+            direction="EMAIL",
+            timestamp=_recent(),
+        )
+        await make_score(
+            email_id=email_low.id, overall=3, scored_at=_recent()
+        )
 
         await make_rep(email="high@example.com", display_name="High Rep")
-        email_high = await make_email(from_email="high@example.com")
-        await make_score(email_id=email_high.id, overall=9)
+        email_high = await make_email(
+            from_email="high@example.com",
+            direction="EMAIL",
+            timestamp=_recent(),
+        )
+        await make_score(
+            email_id=email_high.id, overall=9, scored_at=_recent()
+        )
 
         resp = await client.get("/api/reps")
         data = resp.json()

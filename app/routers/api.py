@@ -21,13 +21,12 @@ async def list_reps(session: AsyncSession = Depends(get_db)):
             email=r.email,
             display_name=r.display_name,
             rep_type=r.rep_type,
-            avg_personalisation=round(r.avg_personalisation, 2) if r.avg_personalisation else None,
-            avg_clarity=round(r.avg_clarity, 2) if r.avg_clarity else None,
-            avg_value_proposition=round(r.avg_value_proposition, 2) if r.avg_value_proposition else None,
-            avg_cta=round(r.avg_cta, 2) if r.avg_cta else None,
+            emails_per_day=round(r.emails_per_day, 2) if r.emails_per_day else None,
+            reply_rate=round(r.reply_rate, 4) if r.reply_rate else None,
             avg_overall=round(r.avg_overall, 2) if r.avg_overall else None,
-            chain_count=r.chain_count,
-            avg_chain_score=round(r.avg_chain_score, 2) if r.avg_chain_score else None,
+            unanswered_count=r.unanswered_count,
+            avg_response_hours=round(r.avg_response_hours, 2) if r.avg_response_hours else None,
+            avg_conv_score=round(r.avg_conv_score, 2) if r.avg_conv_score else None,
         )
         for r in result["items"]
     ]

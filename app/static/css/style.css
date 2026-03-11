@@ -1,3 +1,4 @@
+/* Score colour classes - used across all pages */
 .score-high {
     color: #16a34a;
     font-weight: 600;
@@ -11,4 +12,436 @@
 .score-low {
     color: #dc2626;
     font-weight: 600;
+}
+
+/* ============================================================
+   Team page — trend cards
+   ============================================================ */
+.trend-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.trend-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.trend-label {
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.trend-value-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.trend-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.trend-delta {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.trend-up {
+    color: #16a34a;
+}
+
+.trend-down {
+    color: #dc2626;
+}
+
+.trend-flat {
+    color: #9ca3af;
+}
+
+.trend-sparkline-wrap {
+    margin-bottom: 4px;
+}
+
+.trend-sparkline {
+    width: 100%;
+    height: 24px;
+}
+
+.sparkline-bar {
+    fill: #e5e7eb;
+}
+
+.sparkline-bar-current {
+    fill: #3b82f6;
+}
+
+.trend-sub {
+    font-size: 11px;
+    color: #9ca3af;
+}
+
+/* ============================================================
+   Team page — filter bar
+   ============================================================ */
+.filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.filter-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-left label {
+    font-size: 13px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.filter-left select {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 13px;
+    background: #fff;
+}
+
+.filter-window-label {
+    font-size: 12px;
+    color: #9ca3af;
+    font-weight: 500;
+}
+
+/* ============================================================
+   Team page — table
+   ============================================================ */
+.team-table-wrap {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow-x: auto;
+}
+
+.team-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+/* Column group headers */
+.col-group-header th {
+    padding: 8px 12px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: none;
+}
+
+.col-group-header .group-outreach {
+    color: #7c3aed;
+    border-bottom: 2px solid #7c3aed;
+}
+
+.col-group-header .group-conversations {
+    color: #047857;
+    border-bottom: 2px solid #047857;
+}
+
+/* Column headers */
+.team-table thead tr:last-child th {
+    padding: 6px 12px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+}
+
+.th-num {
+    text-align: right !important;
+}
+
+.th-score {
+    text-align: left;
+}
+
+.th-bar {
+    text-align: left;
+    min-width: 120px;
+}
+
+.team-table td {
+    padding: 10px 12px;
+    font-size: 13px;
+    border-bottom: 1px solid #f3f4f6;
+    white-space: nowrap;
+}
+
+.team-table tbody tr:hover {
+    background: #f9fafb;
+}
+
+/* Rep cell with avatar */
+.rep-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rep-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.avatar-color-0 { background: #6366f1; }
+.avatar-color-1 { background: #0891b2; }
+.avatar-color-2 { background: #059669; }
+.avatar-color-3 { background: #d97706; }
+.avatar-color-4 { background: #dc2626; }
+
+.rep-link {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.rep-link:hover {
+    text-decoration: underline;
+}
+
+/* Type badges */
+.rep-type-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.badge-sdr {
+    background: #ede9fe;
+    color: #6d28d9;
+}
+
+.badge-bizdev {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.badge-am {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.badge-nonsales {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+/* Rep type inline edit */
+.rep-type-edit-btn {
+    color: #9ca3af;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.rep-type-edit-btn:hover {
+    color: #2563eb;
+}
+
+.rep-type-select {
+    font-size: 13px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 2px 6px;
+    background: #fff;
+}
+
+/* Ratio bar (reply rate & response time) */
+.ratio-bar-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ratio-bar-track {
+    width: 48px;
+    height: 6px;
+    background: #f3f4f6;
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.ratio-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+}
+
+.bar-high { background: #16a34a; }
+.bar-mid  { background: #ca8a04; }
+.bar-low  { background: #dc2626; }
+
+.ratio-pct {
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 32px;
+}
+
+/* Metric styles */
+.metric-num {
+    font-weight: 600;
+}
+
+.metric-muted {
+    color: #9ca3af;
+}
+
+.score-num {
+    font-size: 15px;
+}
+
+/* Unanswered */
+.unanswered-zero {
+    color: #9ca3af;
+}
+
+.unanswered-some {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+/* Text alignment */
+.text-right {
+    text-align: right;
+}
+
+.text-center {
+    text-align: center;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    color: #6b7280;
+    padding: 24px 12px !important;
+}
+
+/* ============================================================
+   Responsive — Tablet (641–900px)
+   ============================================================ */
+@media (max-width: 900px) {
+    .trend-sparkline-wrap {
+        display: none;
+    }
+
+    .team-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* ============================================================
+   Responsive — Mobile (<= 640px)
+   ============================================================ */
+@media (max-width: 640px) {
+    .trend-row {
+        grid-template-columns: 1fr;
+    }
+
+    .team-table-wrap {
+        background: transparent;
+        box-shadow: none;
+        overflow: visible;
+    }
+
+    .team-table thead {
+        display: none;
+    }
+
+    .team-table,
+    .team-table tbody,
+    .team-table tr,
+    .team-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .team-table tbody tr {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        margin-bottom: 12px;
+        padding: 12px;
+    }
+
+    .team-table td {
+        border-bottom: none;
+        padding: 4px 0;
+        white-space: normal;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .team-table td::before {
+        content: attr(data-label);
+        font-size: 11px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        flex-shrink: 0;
+        margin-right: 8px;
+    }
+
+    /* Rep name spans full width as card header */
+    .team-table td[data-label="Rep"] {
+        display: block;
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+
+    .team-table td[data-label="Rep"]::before {
+        display: none;
+    }
+
+    .text-right {
+        text-align: left;
+    }
+
+    .text-center {
+        text-align: left;
+    }
 }

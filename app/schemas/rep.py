@@ -25,10 +25,9 @@ class RepTeamRow(AppBase):
     email: str
     display_name: str
     rep_type: Optional[str] = None
-    avg_personalisation: Optional[float] = None
-    avg_clarity: Optional[float] = None
-    avg_value_proposition: Optional[float] = None
-    avg_cta: Optional[float] = None
+    emails_per_day: Optional[float] = None
+    reply_rate: Optional[float] = None
     avg_overall: Optional[float] = None
-    chain_count: Optional[int] = None
-    avg_chain_score: Optional[float] = None
+    unanswered_count: Optional[int] = None
+    avg_response_hours: Optional[float] = None
+    avg_conv_score: Optional[float] = None
