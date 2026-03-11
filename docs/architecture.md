@@ -416,7 +416,7 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 - `run_score_job(session, job_id)` — reads `scoring_batch_size` from settings, calls `score_unscored_emails`. Result summary includes `scored`, `errors`, `tokens`.
 - `run_rescore_job(session, job_id)` — deletes all existing chain_scores and scores, then calls `score_unscored_emails` to score every email and chain. Result summary includes `scored`, `errors`, `tokens`, `chains_scored`, `chain_errors`.
 - `run_export_job(session, job_id, output_path)` — generates Excel via `export_to_excel`, stores path in result summary.
-- `run_chain_build_job(session, job_id)` — calls `build_chains`, stores result summary with `chains_created`, `chains_updated`, and `emails_linked` counts.
+- `run_chain_build_job(session, job_id)` — runs `split_email_threads` first to extract individual messages from quoted reply chains, then calls `build_chains` to group emails into conversation chains. Result summary includes `threads_split`, `messages_created`, `chains_created`, `chains_updated`, and `emails_linked`.
 
 No FULL_RUN job type. A FETCH job can handle both fetch and score phases. The `auto_score` request parameter controls scoring per-fetch; when omitted, the `auto_score_after_fetch` setting applies. Cron POSTs to `/api/operations/fetch` and the setting controls the default behaviour. The UI exposes a "Score after fetch" checkbox initialised from the setting, allowing per-fetch override.
 
