@@ -316,3 +316,23 @@ async def run_chain_build_job(
             await _fail_job(s, job_id, exc)
 
 
+async def run_thread_split_job(
+    session: Optional[AsyncSession], job_id: int
+) -> None:
+    async with _session_scope(session) as s:
+        try:
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
+            _set_running(job)
+            await s.commit()
+
+            split_result = await split_email_threads(s)
+            result = await s.execute(select(Job).where(Job.job_id == job_id))
+            job = result.scalar_one()
+            _set_completed(job, split_result)
+            await s.flush()
+
+        except Exception as exc:
+            await _fail_job(s, job_id, exc)
+
+

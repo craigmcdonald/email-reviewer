@@ -123,7 +123,7 @@ Operation execution history.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | job_id | Integer | PK, auto-increment | |
-| job_type | String | | FETCH, SCORE, RESCORE, EXPORT, or CHAIN_BUILD |
+| job_type | String | | FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD, or THREAD_SPLIT |
 | status | String | | PENDING, RUNNING, COMPLETED, or FAILED |
 | started_at | DateTime | | Set when status becomes RUNNING |
 | completed_at | DateTime | | Set when status becomes COMPLETED or FAILED |

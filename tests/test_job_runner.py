@@ -562,6 +562,47 @@ class TestRunChainBuildJob:
         assert updated.result_summary["emails_linked"] == 12
 
 
+class TestRunThreadSplitJob:
+    @patch("app.services.job_runner.split_email_threads", new_callable=AsyncMock)
+    async def test_sets_running_then_completed(self, mock_split, db, make_job, make_settings):
+        mock_split.return_value = {
+            "candidates": 2, "threads_split": 2, "messages_created": 5,
+            "duplicates_skipped": 1, "errors": 0,
+        }
+        await make_settings()
+        job = await make_job(job_type=JobType.THREAD_SPLIT)
+        await db.commit()
+
+        from app.services.job_runner import run_thread_split_job
+
+        await run_thread_split_job(db, job.job_id)
+
+        result = await db.execute(select(Job).where(Job.job_id == job.job_id))
+        updated = result.scalar_one()
+        assert updated.status == JobStatus.COMPLETED
+        assert updated.started_at is not None
+        assert updated.completed_at is not None
+
+    @patch("app.services.job_runner.split_email_threads", new_callable=AsyncMock)
+    async def test_writes_result_summary(self, mock_split, db, make_job, make_settings):
+        mock_split.return_value = {
+            "candidates": 3, "threads_split": 3, "messages_created": 8,
+            "duplicates_skipped": 2, "errors": 0,
+        }
+        await make_settings()
+        job = await make_job(job_type=JobType.THREAD_SPLIT)
+        await db.commit()
+
+        from app.services.job_runner import run_thread_split_job
+
+        await run_thread_split_job(db, job.job_id)
+
+        result = await db.execute(select(Job).where(Job.job_id == job.job_id))
+        updated = result.scalar_one()
+        assert updated.result_summary["threads_split"] == 3
+        assert updated.result_summary["messages_created"] == 8
+
+
 class TestRunFetchJobChainsBuilding:
     @patch("app.services.job_runner.build_chains", new_callable=AsyncMock)
     @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=5)

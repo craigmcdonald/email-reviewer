@@ -178,6 +178,12 @@ Rebuild conversation chains from email threading data. Returns 202 with job reco
 
 **Response**: `JobResponse` (202)
 
+### POST /api/operations/thread-split
+
+Split email threads into individual messages. Processes existing classified emails that contain quoted reply chains. Returns 202 with job record. Rejects 409 if a THREAD_SPLIT job is already RUNNING.
+
+**Response**: `JobResponse` (202)
+
 ### GET /api/operations/jobs
 
 List all jobs ordered by created_at descending.

@@ -11,6 +11,7 @@ from app.services.job_runner import (
     run_fetch_job,
     run_rescore_job,
     run_score_job,
+    run_thread_split_job,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,15 @@ def chain_build_task(job_id: int) -> None:
         run_chain_build_job(None, job_id),
         job_id,
         "CHAIN_BUILD",
+    )
+
+
+def thread_split_task(job_id: int) -> None:
+    """RQ-compatible synchronous wrapper for run_thread_split_job."""
+    _run_with_error_handling(
+        run_thread_split_job(None, job_id),
+        job_id,
+        "THREAD_SPLIT",
     )
 
 
