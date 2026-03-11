@@ -118,7 +118,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <h3 class="text-sm font-medium text-gray-900">Rebuild Conversations</h3>
-                    <p class="text-xs text-gray-500">Re-build email conversations.</p>
+                    <p class="text-xs text-gray-500">Classify emails, split threads, and build conversation chains.</p>
                 </div>
                 <button onclick="startOperation('chain-build')"
                         class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">Rebuild Conversations</button>
@@ -427,12 +427,20 @@ function formatSummary(summary) {
     if (!summary) return '';
     const parts = [];
     if (summary.fetched != null) parts.push(`Fetched ${summary.fetched} emails`);
+    if (summary.classified != null) parts.push(`classified ${summary.classified}`);
+    if (summary.auto_replies != null && summary.auto_replies > 0) parts.push(`${summary.auto_replies} auto-replies`);
+    if (summary.threads_split != null) parts.push(`split ${summary.threads_split} threads`);
+    if (summary.messages_created != null && summary.messages_created > 0) parts.push(`${summary.messages_created} messages extracted`);
+    if (summary.chains_created != null) parts.push(`${summary.chains_created} chains created`);
+    if (summary.chains_updated != null && summary.chains_updated > 0) parts.push(`${summary.chains_updated} updated`);
+    if (summary.emails_linked != null) parts.push(`${summary.emails_linked} emails linked`);
     if (summary.scored != null) parts.push(`scored ${summary.scored} emails`);
     if (summary.chains_scored != null) parts.push(`scored ${summary.chains_scored} conversations`);
     if (summary.errors != null && summary.errors > 0) parts.push(`${summary.errors} errors`);
     if (summary.chain_errors != null && summary.chain_errors > 0) parts.push(`${summary.chain_errors} conversation errors`);
     if (summary.new_reps != null && summary.new_reps > 0) parts.push(`${summary.new_reps} new reps`);
     if (summary.output_path) parts.push(`Export: ${summary.output_path}`);
+    if (summary.stage_errors) parts.push(`Stage errors: ${summary.stage_errors.join('; ')}`);
     return parts.join(', ');
 }
 
