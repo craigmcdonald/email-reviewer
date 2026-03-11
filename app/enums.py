@@ -26,7 +26,6 @@ class JobType(str, Enum):
     RESCORE = "RESCORE"
     EXPORT = "EXPORT"
     CHAIN_BUILD = "Chain_Build"
-    THREAD_SPLIT = "THREAD_SPLIT"
 
     def __str__(self) -> str:
         return self.value

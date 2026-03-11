@@ -16,9 +16,8 @@ from app.services.job_runner import (
     run_fetch_job,
     run_rescore_job,
     run_score_job,
-    run_thread_split_job,
 )
-from app.tasks import chain_build_task, export_task, fetch_task, rescore_task, score_task, thread_split_task
+from app.tasks import chain_build_task, export_task, fetch_task, rescore_task, score_task
 from app.worker import get_queue, validate_redis
 
 router = APIRouter(prefix="/api/operations")
@@ -33,7 +32,6 @@ STALE_RUNNING_MINUTES = 60
 FETCH_JOB_TIMEOUT = 1800
 SCORE_JOB_TIMEOUT = 1800
 RESCORE_JOB_TIMEOUT = 3600
-THREAD_SPLIT_JOB_TIMEOUT = 1800
 
 
 async def _reap_stale_jobs(session: AsyncSession) -> None:
@@ -207,24 +205,6 @@ async def start_chain_build(
         queue.enqueue(chain_build_task, job.job_id)
     else:
         background_tasks.add_task(run_chain_build_job, None, job.job_id)
-    return job
-
-
-@router.post("/thread-split", status_code=202, response_model=JobResponse)
-async def start_thread_split(
-    background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_db),
-):
-    queue = _validate_queue()
-    await _reap_stale_jobs(session)
-    await _check_no_running(session, [JobType.THREAD_SPLIT])
-    job = await _create_job(session, JobType.THREAD_SPLIT)
-    await session.commit()
-
-    if queue is not None:
-        queue.enqueue(thread_split_task, job.job_id, job_timeout=THREAD_SPLIT_JOB_TIMEOUT)
-    else:
-        background_tasks.add_task(run_thread_split_job, None, job.job_id)
     return job
 
 

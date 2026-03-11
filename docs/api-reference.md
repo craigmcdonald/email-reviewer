@@ -174,13 +174,7 @@ Start an Excel export operation.
 
 ### POST /api/operations/chain-build
 
-Rebuild conversation chains from email threading data. Returns 202 with job record. Rejects 409 if a CHAIN_BUILD job is already RUNNING.
-
-**Response**: `JobResponse` (202)
-
-### POST /api/operations/thread-split
-
-Split email threads into individual messages. Processes existing classified emails that contain quoted reply chains. Returns 202 with job record. Rejects 409 if a THREAD_SPLIT job is already RUNNING.
+Rebuild conversation chains from email threading data. Splits email threads into individual messages first, then builds chains. Returns 202 with job record. Rejects 409 if a CHAIN_BUILD job is already RUNNING.
 
 **Response**: `JobResponse` (202)
 

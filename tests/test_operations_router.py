@@ -54,12 +54,6 @@ class TestPostOperations:
         assert resp.status_code == 202
         assert "job_id" in resp.json()
 
-    @patch("app.routers.operations.run_thread_split_job", new_callable=AsyncMock)
-    async def test_thread_split_returns_202(self, mock_run, client):
-        resp = await client.post("/api/operations/thread-split")
-        assert resp.status_code == 202
-        assert "job_id" in resp.json()
-
 
 class TestGetJobs:
     @patch("app.routers.operations.run_fetch_job", new_callable=AsyncMock)

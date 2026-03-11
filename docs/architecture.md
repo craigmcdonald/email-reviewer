@@ -22,7 +22,7 @@ Dependencies flow strictly left to right.
 
 | Layer | Location | Role |
 |-------|----------|------|
-| Enums | `app/enums.py` | `(str, Enum)` definitions shared by models and schemas. Serialise as plain strings in the database and JSON. Includes `EmailDirection`, `JobType` (FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD, THREAD_SPLIT), `JobStatus`, `RepType` (SDR, BizDev, AM, Non-Sales). |
+| Enums | `app/enums.py` | `(str, Enum)` definitions shared by models and schemas. Serialise as plain strings in the database and JSON. Includes `EmailDirection`, `JobType` (FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD), `JobStatus`, `RepType` (SDR, BizDev, AM, Non-Sales). |
 | Models | `app/models/` | SQLAlchemy ORM layer. One file per domain entity. All inherit `AuditMixin` and `Base`. |
 | Schemas | `app/schemas/` | Pydantic validation. Three schemas per entity: `Create`, `Update`, `Response`. One file per domain. |
 | Services | `app/services/` | Business logic. Pure functions where possible. Separated from routers. |
@@ -112,7 +112,7 @@ Seven tables:
 | Column | Type | Notes |
 |--------|------|-------|
 | job_id | Integer (PK) | Auto-increment |
-| job_type | String | FETCH, SCORE, RESCORE, EXPORT, CHAIN_BUILD, or THREAD_SPLIT |
+| job_type | String | FETCH, SCORE, RESCORE, EXPORT, or CHAIN_BUILD |
 | status | String | PENDING, RUNNING, COMPLETED, or FAILED |
 | started_at | DateTime | Set when status becomes RUNNING |
 | completed_at | DateTime | Set when status becomes COMPLETED or FAILED |
@@ -416,8 +416,7 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 - `run_score_job(session, job_id)` — reads `scoring_batch_size` from settings, calls `score_unscored_emails`. Result summary includes `scored`, `errors`, `tokens`.
 - `run_rescore_job(session, job_id)` — deletes all existing chain_scores and scores, then calls `score_unscored_emails` to score every email and chain. Result summary includes `scored`, `errors`, `tokens`, `chains_scored`, `chain_errors`.
 - `run_export_job(session, job_id, output_path)` — generates Excel via `export_to_excel`, stores path in result summary.
-- `run_chain_build_job(session, job_id)` — calls `build_chains`, stores result summary with `chains_created`, `chains_updated`, and `emails_linked` counts.
-- `run_thread_split_job(session, job_id)` — calls `split_email_threads` to extract individual messages from quoted reply chains in existing classified emails. Result summary includes `candidates`, `threads_split`, `messages_created`, `duplicates_skipped`, and `errors`.
+- `run_chain_build_job(session, job_id)` — runs `split_email_threads` first to extract individual messages from quoted reply chains, then calls `build_chains` to group emails into conversation chains. Result summary includes `threads_split`, `messages_created`, `chains_created`, `chains_updated`, and `emails_linked`.
 
 No FULL_RUN job type. A FETCH job can handle both fetch and score phases. The `auto_score` request parameter controls scoring per-fetch; when omitted, the `auto_score_after_fetch` setting applies. Cron POSTs to `/api/operations/fetch` and the setting controls the default behaviour. The UI exposes a "Score after fetch" checkbox initialised from the setting, allowing per-fetch override.
 

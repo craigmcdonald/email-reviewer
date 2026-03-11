@@ -526,8 +526,13 @@ class TestRunExportJobFailure:
 
 
 class TestRunChainBuildJob:
+    @patch("app.services.job_runner.split_email_threads", new_callable=AsyncMock)
     @patch("app.services.job_runner.build_chains", new_callable=AsyncMock)
-    async def test_sets_running_then_completed(self, mock_build, db, make_job):
+    async def test_sets_running_then_completed(self, mock_build, mock_split, db, make_job):
+        mock_split.return_value = {
+            "candidates": 0, "threads_split": 0, "messages_created": 0,
+            "duplicates_skipped": 0, "errors": 0,
+        }
         mock_build.return_value = {
             "chains_created": 3, "chains_updated": 0, "emails_linked": 8,
         }
@@ -544,8 +549,13 @@ class TestRunChainBuildJob:
         assert updated.started_at is not None
         assert updated.completed_at is not None
 
+    @patch("app.services.job_runner.split_email_threads", new_callable=AsyncMock)
     @patch("app.services.job_runner.build_chains", new_callable=AsyncMock)
-    async def test_writes_result_summary(self, mock_build, db, make_job):
+    async def test_writes_result_summary(self, mock_build, mock_split, db, make_job):
+        mock_split.return_value = {
+            "candidates": 0, "threads_split": 0, "messages_created": 0,
+            "duplicates_skipped": 0, "errors": 0,
+        }
         mock_build.return_value = {
             "chains_created": 5, "chains_updated": 2, "emails_linked": 12,
         }
@@ -561,46 +571,30 @@ class TestRunChainBuildJob:
         assert updated.result_summary["chains_created"] == 5
         assert updated.result_summary["emails_linked"] == 12
 
-
-class TestRunThreadSplitJob:
     @patch("app.services.job_runner.split_email_threads", new_callable=AsyncMock)
-    async def test_sets_running_then_completed(self, mock_split, db, make_job, make_settings):
+    @patch("app.services.job_runner.build_chains", new_callable=AsyncMock)
+    async def test_runs_thread_split_before_chain_build(self, mock_build, mock_split, db, make_job):
         mock_split.return_value = {
             "candidates": 2, "threads_split": 2, "messages_created": 5,
-            "duplicates_skipped": 1, "errors": 0,
+            "duplicates_skipped": 0, "errors": 0,
         }
-        await make_settings()
-        job = await make_job(job_type=JobType.THREAD_SPLIT)
+        mock_build.return_value = {
+            "chains_created": 3, "chains_updated": 0, "emails_linked": 8,
+        }
+        job = await make_job(job_type=JobType.CHAIN_BUILD)
         await db.commit()
 
-        from app.services.job_runner import run_thread_split_job
+        from app.services.job_runner import run_chain_build_job
 
-        await run_thread_split_job(db, job.job_id)
+        await run_chain_build_job(db, job.job_id)
 
+        mock_split.assert_called_once()
+        mock_build.assert_called_once()
         result = await db.execute(select(Job).where(Job.job_id == job.job_id))
         updated = result.scalar_one()
-        assert updated.status == JobStatus.COMPLETED
-        assert updated.started_at is not None
-        assert updated.completed_at is not None
-
-    @patch("app.services.job_runner.split_email_threads", new_callable=AsyncMock)
-    async def test_writes_result_summary(self, mock_split, db, make_job, make_settings):
-        mock_split.return_value = {
-            "candidates": 3, "threads_split": 3, "messages_created": 8,
-            "duplicates_skipped": 2, "errors": 0,
-        }
-        await make_settings()
-        job = await make_job(job_type=JobType.THREAD_SPLIT)
-        await db.commit()
-
-        from app.services.job_runner import run_thread_split_job
-
-        await run_thread_split_job(db, job.job_id)
-
-        result = await db.execute(select(Job).where(Job.job_id == job.job_id))
-        updated = result.scalar_one()
-        assert updated.result_summary["threads_split"] == 3
-        assert updated.result_summary["messages_created"] == 8
+        assert updated.result_summary["threads_split"] == 2
+        assert updated.result_summary["messages_created"] == 5
+        assert updated.result_summary["chains_created"] == 3
 
 
 class TestRunFetchJobChainsBuilding:
