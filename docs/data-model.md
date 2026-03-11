@@ -31,6 +31,8 @@ Stores email data fetched from HubSpot.
 | thread_id | String | Nullable | HubSpot thread identifier |
 | is_auto_reply | Boolean | default false | True for auto-replies (OOO, calendar, bounces). Set by the classifier service. |
 | quoted_metadata | JSONB | Nullable | Extracted metadata about quoted emails in the body. Set by the classifier service. Array of `{from_email, subject}` objects. NULL means unclassified. |
+| is_thread_split | Boolean | default false | True when the email's thread body has been processed by the thread splitter. |
+| split_from_id | Integer | FK -> emails.id, nullable | Parent email this message was extracted from during thread splitting. NULL for emails fetched directly from HubSpot. |
 
 ### scores
 
@@ -111,6 +113,8 @@ Single-row application configuration. Seeded on first migration.
 | weight_personalisation | Float | | Weight for personalisation in overall score calculation. Default 0.30 |
 | weight_cta | Float | | Weight for cta in overall score calculation. Default 0.20 |
 | weight_clarity | Float | | Weight for clarity in overall score calculation. Default 0.15 |
+| thread_splitter_prompt_blocks | JSONB | Nullable | Structured prompt blocks for the Haiku thread splitter. Keys: `opening`, `messages`, `closing` |
+| thread_split_indicators | JSONB | Nullable | List of substring indicators used to pre-filter emails that may contain thread content. Default: `["From:", "wrote:", "Original Message", "Sent:"]` |
 
 ### jobs
 
@@ -148,4 +152,5 @@ Operation execution history.
 - **EmailChain -> Email**: one-to-many. Emails reference their chain via `chain_id`. An email's `position_in_chain` gives its ordinal position (1-based, by timestamp).
 - **EmailChain -> ChainScore**: one-to-one, cascade delete. Deleting a chain removes its chain_score.
 - **Email -> Score**: one-to-one, cascade delete. Deleting an email removes its score.
+- **Email -> Email (split)**: one-to-many self-referential. Split child emails reference their parent via `split_from_id`. Cascade delete removes children when the parent is deleted.
 - **Rep** averages are computed as queries, not materialised — the dataset is small enough.

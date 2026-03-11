@@ -7,10 +7,10 @@ Email Reviewer fetches outgoing sales rep emails from HubSpot, scores each one u
 ## Data Pipeline
 
 ```
-HubSpot API -> Fetcher -> PostgreSQL -> Scorer (Claude API) -> PostgreSQL -> Web UI
+HubSpot API -> Fetcher -> Classifier -> Thread Splitter -> Chain Builder -> Scorer -> Web UI
 ```
 
-The pipeline runs in discrete stages as background tasks triggered via the web UI or API. Each stage is idempotent: the fetcher upserts on HubSpot ID and the scorer skips emails that already have a score row.
+The pipeline runs in discrete stages as background tasks triggered via the web UI or API. Each stage is idempotent: the fetcher upserts on HubSpot ID, the thread splitter skips already-split emails, and the scorer skips emails that already have a score row.
 
 ## Layered Architecture
 
@@ -61,6 +61,8 @@ Seven tables:
 | thread_id | String | Nullable. HubSpot thread identifier |
 | is_auto_reply | Boolean | Default false. True for auto-replies (OOO, calendar, bounces). Set by the classifier. |
 | quoted_metadata | JSONB | Nullable. Extracted metadata about quoted emails. Array of `{from_email, subject}`. NULL means unclassified. |
+| is_thread_split | Boolean | Default false. True when the thread splitter has processed this email. |
+| split_from_id | Integer (FK -> emails.id) | Nullable. Parent email this message was extracted from during thread splitting. |
 
 **scores** - Claude API scoring results. One-to-one with emails (cascade delete).
 
@@ -102,6 +104,8 @@ Seven tables:
 | weight_personalisation | Float | Weight for personalisation in overall score calculation. Default 0.30 |
 | weight_cta | Float | Weight for cta in overall score calculation. Default 0.20 |
 | weight_clarity | Float | Weight for clarity in overall score calculation. Default 0.15 |
+| thread_splitter_prompt_blocks | JSONB | Nullable. Structured prompt blocks for the Haiku thread splitter. Keys: `opening`, `messages`, `closing` |
+| thread_split_indicators | JSONB | Nullable. List of substring indicators for pre-filtering emails that may contain threads |
 
 **jobs** - Operation execution history.
 
@@ -150,6 +154,7 @@ All seven tables include audit columns (`created_at`, `updated_at`, `created_by`
 ### Relationships
 
 - Email -> Score: one-to-one, cascade delete. Deleting an email removes its score.
+- Email -> Email (split): one-to-many self-referential. Split child emails reference their parent via `split_from_id`. Cascade delete removes children when the parent is deleted.
 - EmailChain -> Email: one-to-many. Emails reference their chain via chain_id.
 - EmailChain -> ChainScore: one-to-one, cascade delete. Deleting a chain removes its chain_score.
 - Rep averages are computed as queries, not materialised - the dataset is small enough.
@@ -245,9 +250,28 @@ The classifier processes emails where `direction` is `INCOMING_EMAIL` or `EMAIL`
 
 The entry point is `classify_emails(session, batch_size=10)`. It follows the same batch-commit pattern as the scorer: Phase 1 collects plain IDs (no ORM objects held across batches), Phase 2 processes pattern matches in committed batches, Phase 3 processes Haiku API calls in committed batches. Each batch re-queries fresh ORM objects by ID, commits on success, and rolls back on failure so completed batches survive crashes. Returns a summary dict with `total`, `classified`, `auto_replies_found`, `chains_extracted`, `errors`, and `batch_errors`.
 
-Classification runs automatically as part of every fetch job (between fetch and chain building). There is no standalone classify endpoint.
+Classification runs automatically as part of every fetch job (between fetch and thread splitting). There is no standalone classify endpoint.
 
 Auto-reply and non-sales emails are excluded from scoring and chain building. The chain builder ignores emails with `is_auto_reply=True` when counting incoming emails, determining unanswered status, and computing `last_activity_at`.
+
+## Thread Splitter
+
+`app/services/thread_splitter.py` splits email threads into individual messages. Emails fetched from HubSpot often contain long quoted reply chains in their `body_text` — a single email record may embed multiple prior messages via Outlook "From: ... Sent: ..." or Gmail "On ... wrote:" quoting conventions. The thread splitter extracts these into separate Email records so each message can be scored and chained independently.
+
+The entry point is `split_email_threads(session, batch_size=10)`, which:
+
+1. Loads `thread_split_indicators` and `thread_splitter_prompt_blocks` from settings. Returns early if either is missing.
+2. Queries emails where `is_thread_split=False`, `is_auto_reply=False`, and `quoted_metadata` is set (classified as having quoted content).
+3. Applies a cheap pre-filter: checks if the email's `body_text` contains any of the configured indicator strings (e.g. "From:", "wrote:", "Original Message", "Sent:"). Emails without indicators are skipped.
+4. Sends the full body of each candidate to Claude Haiku with the configurable prompt. Haiku returns a JSON array of extracted messages, ordered newest-first.
+5. Trims the original email's `body_text` to only the top-level message content (the first element in the array).
+6. For each subsequent extracted message, checks for duplicates using multi-signal matching: `from_email` (case-insensitive) + normalized subject + body text substring (first 150 characters). If no duplicate exists, creates a new Email record with `split_from_id` set to the parent email's ID and `direction` inferred from company domains.
+7. Sets `is_thread_split=True` on the original email.
+8. Follows the batch-commit pattern: each batch re-queries fresh ORM objects, commits on success, and rolls back on failure.
+
+Returns a summary dict with `candidates`, `threads_split`, `messages_created`, `duplicates_skipped`, and `errors`.
+
+Thread splitting runs automatically as part of every fetch job (between classification and chain building).
 
 ## Chain Builder
 
@@ -376,6 +400,8 @@ Settings control the behaviour of fetch and score operations:
 - `follow_up_email_prompt_blocks` — structured prompt blocks for scoring follow-up emails (same sender, recipient, normalized subject, no chain_id).
 - `classifier_prompt_blocks` — structured prompt blocks for the Haiku email classifier.
 - `chain_evaluation_prompt_blocks` — structured prompt blocks for evaluating conversation chains on chain-specific dimensions (progression, responsiveness, persistence, conversation_quality).
+- `thread_splitter_prompt_blocks` — structured prompt blocks for the Haiku thread splitter. Keys: `opening`, `messages`, `closing`.
+- `thread_split_indicators` — list of substring indicators for pre-filtering emails that may contain thread content (e.g. `["From:", "wrote:", "Original Message", "Sent:"]`). Editable via settings so new patterns can be added without code changes.
 - `weight_value_proposition`, `weight_personalisation`, `weight_cta`, `weight_clarity` — weights for computing an overall score from the four individual dimensions. Must sum to 1.0. Defaults: 0.35, 0.30, 0.20, 0.15.
 
 Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` cannot be in the future, `company_domains` cannot be empty, `scoring_batch_size` must be >= 1. When any weight field is provided, all four must be present and sum to 1.0 (tolerance 0.001). Prompt fields cannot be empty strings.
@@ -386,7 +412,7 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 
 `app/tasks.py` provides synchronous wrapper functions (`fetch_task`, `score_task`, `rescore_task`, `export_task`) for RQ. Each calls `asyncio.run()` on the corresponding async runner with `session=None`, so the runner creates its own session.
 
-- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count, auto_score)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided), then runs four stages in sequence, each committing independently so completed work survives later failures: (1) `fetch_and_store` with company_domains and optional `end_date`/`max_count`, (2) `classify_emails` to classify incoming emails as auto-replies or real responses, (3) `build_chains` to group emails into conversation chains, (4) `score_unscored_emails` when `auto_score` is true or when `auto_score` is None and the `auto_score_after_fetch` setting is true. Each stage is wrapped in try/except; if a stage fails, prior committed results are preserved and the error is recorded in `result_summary.stage_errors`. Result summary includes `fetched`, `new_reps`, `auto_replies`, and optionally `scored`, `errors`, `tokens`.
+- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count, auto_score)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided), then runs five stages in sequence, each committing independently so completed work survives later failures: (1) `fetch_and_store` with company_domains and optional `end_date`/`max_count`, (2) `classify_emails` to classify incoming emails as auto-replies or real responses, (2.5) `split_email_threads` to extract individual messages from quoted reply chains, (3) `build_chains` to group emails into conversation chains, (4) `score_unscored_emails` when `auto_score` is true or when `auto_score` is None and the `auto_score_after_fetch` setting is true. Each stage is wrapped in try/except; if a stage fails, prior committed results are preserved and the error is recorded in `result_summary.stage_errors`. Result summary includes `fetched`, `new_reps`, `auto_replies`, `threads_split`, `messages_extracted`, and optionally `scored`, `errors`, `tokens`.
 - `run_score_job(session, job_id)` — reads `scoring_batch_size` from settings, calls `score_unscored_emails`. Result summary includes `scored`, `errors`, `tokens`.
 - `run_rescore_job(session, job_id)` — deletes all existing chain_scores and scores, then calls `score_unscored_emails` to score every email and chain. Result summary includes `scored`, `errors`, `tokens`, `chains_scored`, `chain_errors`.
 - `run_export_job(session, job_id, output_path)` — generates Excel via `export_to_excel`, stores path in result summary.

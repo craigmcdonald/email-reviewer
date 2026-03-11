@@ -23,6 +23,7 @@ from app.services.export import export_to_excel
 from app.services.fetcher import fetch_and_store
 from app.services.scorer import score_unscored_emails
 from app.services.settings import get_settings
+from app.services.thread_splitter import split_email_threads
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +159,15 @@ async def run_fetch_job(
             except Exception as exc:
                 logger.exception("Fetch job %d: classify stage failed", job_id)
                 stage_errors.append(f"classify: {exc}")
+
+            # Stage 2.5: Split email threads
+            try:
+                split_result = await split_email_threads(s)
+                summary["threads_split"] = split_result.get("threads_split", 0)
+                summary["messages_extracted"] = split_result.get("messages_created", 0)
+            except Exception as exc:
+                logger.exception("Fetch job %d: thread split stage failed", job_id)
+                stage_errors.append(f"thread_split: {exc}")
 
             # Stage 3: Build conversation chains
             try:

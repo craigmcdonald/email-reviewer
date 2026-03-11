@@ -38,6 +38,10 @@ class Email(AuditMixin, Base):
     thread_id: Mapped[Optional[str]] = mapped_column(String, default=None)
     is_auto_reply: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     quoted_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, default=None)
+    is_thread_split: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    split_from_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("emails.id"), default=None
+    )
 
     score: Mapped[Optional["Score"]] = relationship(
         "Score",
@@ -47,4 +51,14 @@ class Email(AuditMixin, Base):
     )
     chain: Mapped[Optional["EmailChain"]] = relationship(
         "EmailChain", back_populates="emails",
+    )
+    split_children: Mapped[list["Email"]] = relationship(
+        "Email",
+        back_populates="split_parent",
+        cascade="all, delete-orphan",
+    )
+    split_parent: Mapped[Optional["Email"]] = relationship(
+        "Email",
+        back_populates="split_children",
+        remote_side="Email.id",
     )
