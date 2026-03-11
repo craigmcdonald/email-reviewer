@@ -1,0 +1,476 @@
+{% extends "base.html" %}
+{% block title %}Feed - Email Reviewer{% endblock %}
+
+{% block content %}
+<style>
+/* Feed page styles */
+.feed-container { max-width: 900px; margin: 0 auto; }
+
+/* Filter bar */
+.feed-filter-bar { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); margin-bottom: 20px; overflow: hidden; }
+.feed-filter-primary { display: flex; align-items: center; gap: 10px; padding: 10px 16px; flex-wrap: wrap; }
+.feed-search-box { display: flex; align-items: center; gap: 6px; border: 1px solid #dde0e4; border-radius: 8px; padding: 6px 10px; flex: 1; min-width: 180px; max-width: 280px; transition: border-color 0.15s; }
+.feed-search-box:focus-within { border-color: #818cf8; box-shadow: 0 0 0 2px rgba(99,102,241,0.12); }
+.feed-search-box svg { width: 14px; height: 14px; color: #9ca3af; flex-shrink: 0; }
+.feed-search-box input { border: none; outline: none; font-size: 13px; width: 100%; color: #1a1a2e; background: transparent; }
+.feed-search-box input::placeholder { color: #9ca3af; }
+.feed-filter-select { border: 1px solid #dde0e4; border-radius: 8px; padding: 6px 28px 6px 10px; font-size: 13px; background: #fff; color: #1a1a2e; outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; transition: border-color 0.15s; }
+.feed-filter-select:focus { border-color: #818cf8; box-shadow: 0 0 0 2px rgba(99,102,241,0.12); }
+.feed-filter-toggle { display: flex; background: #f3f4f6; border-radius: 8px; overflow: hidden; }
+.feed-toggle-btn { padding: 6px 14px; font-size: 12px; font-weight: 600; border: none; background: transparent; color: #6b7280; cursor: pointer; transition: all 0.15s; text-decoration: none; }
+.feed-toggle-btn.active { background: #4f46e5; color: #fff; border-radius: 7px; }
+.feed-filter-more-btn { display: flex; align-items: center; gap: 4px; padding: 6px 10px; font-size: 12px; font-weight: 600; color: #6b7280; background: transparent; border: 1px solid #dde0e4; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+.feed-filter-more-btn:hover { border-color: #818cf8; color: #4f46e5; }
+.feed-filter-more-btn.has-filters { background: #eef2ff; border-color: #818cf8; color: #4f46e5; }
+.feed-filter-more-btn svg { width: 14px; height: 14px; }
+.feed-filter-count { margin-left: auto; font-size: 12px; color: #9ca3af; white-space: nowrap; }
+.feed-filter-secondary { display: none; padding: 0 16px 12px; border-top: 1px solid #f0f1f3; padding-top: 10px; }
+.feed-filter-secondary.open { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.feed-filter-label { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.feed-filter-secondary input[type="date"],
+.feed-filter-secondary select { border: 1px solid #dde0e4; border-radius: 8px; padding: 5px 8px; font-size: 13px; background: #fff; color: #1a1a2e; outline: none; }
+.feed-filter-dash { color: #9ca3af; font-size: 12px; }
+
+/* Feed items */
+.feed-list { display: flex; flex-direction: column; gap: 8px; }
+.feed-item { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); overflow: hidden; transition: box-shadow 0.15s; }
+.feed-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04); }
+.feed-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; transition: background 0.1s; }
+.feed-row:hover { background: #fafafb; }
+.feed-item.expanded > .feed-row { background: #fafafb; border-bottom: 1px solid #f0f1f3; }
+.feed-avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.feed-main { flex: 1; min-width: 0; }
+.feed-top { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.feed-rep { font-size: 13px; font-weight: 600; color: #1a1a2e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-rep a { color: inherit; text-decoration: none; }
+.feed-rep a:hover { color: #4f46e5; }
+.feed-arrow { color: #9ca3af; font-size: 11px; flex-shrink: 0; }
+.feed-recipient { font-size: 12px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-subject { font-size: 13px; font-weight: 500; color: #1a1a2e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-preview { font-size: 12px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px; }
+.feed-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.feed-time { font-size: 11px; color: #9ca3af; white-space: nowrap; }
+.feed-score-badge { font-size: 13px; font-weight: 700; min-width: 28px; text-align: center; }
+.chain-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: #4f46e5; background: #eef2ff; padding: 2px 7px; border-radius: 4px; flex-shrink: 0; }
+.chain-badge svg { width: 12px; height: 12px; }
+.unanswered-dot { width: 7px; height: 7px; border-radius: 50%; background: #dc2626; flex-shrink: 0; }
+
+/* Expanded: standalone */
+.expand-panel { display: none; padding: 16px 16px 16px 62px; }
+.feed-item.expanded .expand-panel { display: block; }
+.ai-notes { border-left: 3px solid #4f46e5; background: #f5f3ff; border-radius: 0 6px 6px 0; padding: 10px 12px; margin-bottom: 12px; display: flex; gap: 8px; align-items: flex-start; }
+.ai-icon { width: 14px; height: 14px; color: #4f46e5; flex-shrink: 0; margin-top: 2px; }
+.email-body-scroll { max-height: 180px; overflow-y: auto; border: 1px solid #eef0f3; border-radius: 6px; padding: 12px; background: #fff; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
+.email-body-text { font-size: 13px; color: #4b5563; white-space: pre-wrap; font-family: inherit; line-height: 1.55; margin: 0; }
+.full-email-link { display: inline-block; margin-top: 8px; font-size: 12px; color: #6b7280; text-decoration: none; cursor: pointer; }
+.full-email-link:hover { color: #4f46e5; text-decoration: underline; }
+
+/* Expanded: thread */
+.thread-panel { display: none; padding: 8px 16px 16px 16px; }
+.feed-item.expanded .thread-panel { display: block; }
+.thread { position: relative; padding-left: 30px; }
+.thread::before { content: ""; position: absolute; left: 16px; top: 0; bottom: 0; width: 2px; background: #e8eaed; border-radius: 1px; }
+.thread-email { position: relative; margin-bottom: 16px; }
+.thread-email:last-child { margin-bottom: 0; }
+.thread-node { position: absolute; left: -22px; top: 14px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; z-index: 1; }
+.node-outgoing { background: #4f46e5; }
+.node-incoming { background: #9ca3af; }
+.thread-card { background: #fff; border: 1px solid #eef0f3; border-radius: 8px; padding: 12px 14px; }
+.thread-card.outgoing { border-left: 3px solid #4f46e5; }
+.thread-card.incoming { border-left: 3px solid #d1d5db; }
+.thread-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px; }
+.thread-from { font-size: 12px; font-weight: 600; color: #1a1a2e; }
+.thread-direction { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 3px; }
+.dir-sent { background: #eef2ff; color: #4f46e5; }
+.dir-received { background: #f3f4f6; color: #6b7280; }
+.thread-time { font-size: 11px; color: #9ca3af; }
+.thread-score { font-size: 12px; font-weight: 700; }
+.thread-body-scroll { max-height: 120px; overflow-y: auto; margin-top: 6px; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
+.thread-body { font-size: 12px; color: #4b5563; white-space: pre-wrap; font-family: inherit; line-height: 1.5; }
+.thread-ai-notes { margin-top: 8px; border-left: 2px solid #4f46e5; padding: 6px 8px; font-size: 12px; color: #3b1f8e; line-height: 1.4; background: #f9f8fe; border-radius: 0 4px 4px 0; }
+
+/* Date separator */
+.date-sep { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.date-sep-line { flex: 1; height: 1px; background: #e8eaed; }
+.date-sep-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+
+/* Pagination */
+.feed-pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; padding: 12px 16px; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); }
+.pag-info { font-size: 13px; color: #6b7280; }
+.pag-info strong { color: #1a1a2e; }
+.pag-controls { display: flex; align-items: center; gap: 2px; }
+.pag-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid #dde0e4; border-radius: 6px; background: #fff; color: #6b7280; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.12s; text-decoration: none; }
+.pag-btn:hover { border-color: #818cf8; color: #4f46e5; background: #f5f3ff; }
+.pag-btn.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+.pag-btn.disabled { opacity: 0.4; pointer-events: none; }
+.pag-btn svg { width: 14px; height: 14px; }
+.pag-per-page { display: flex; align-items: center; gap: 6px; margin-left: 16px; }
+.pag-per-page label { font-size: 12px; color: #9ca3af; }
+.pag-per-page select { border: 1px solid #dde0e4; border-radius: 6px; padding: 4px 24px 4px 8px; font-size: 12px; background: #fff; color: #1a1a2e; outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 6px center; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.4); justify-content: center; align-items: center; }
+.modal-overlay.visible { display: flex; }
+.modal { background: #fff; border-radius: 12px; box-shadow: 0 24px 64px rgba(0,0,0,0.2); width: 100%; max-width: 640px; margin: 16px; overflow: hidden; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e8eaed; }
+.modal-title { font-size: 15px; font-weight: 600; color: #1a1a2e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 16px; }
+.modal-close { background: none; border: none; cursor: pointer; color: #9ca3af; padding: 4px; border-radius: 6px; }
+.modal-close:hover { background: #f3f4f6; color: #6b7280; }
+.modal-close svg { width: 18px; height: 18px; }
+.modal-body { padding: 20px; max-height: 70vh; overflow-y: auto; }
+.modal-meta { display: flex; gap: 16px; font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+    .feed-filter-primary { gap: 8px; }
+    .feed-search-box { max-width: none; min-width: 0; }
+    .feed-filter-count { display: none; }
+    .feed-row { padding: 10px 12px; gap: 10px; }
+    .feed-preview { display: none; }
+    .expand-panel { padding: 12px; }
+    .thread-panel { padding: 8px 8px 12px; }
+    .thread { padding-left: 24px; }
+    .thread::before { left: 12px; }
+    .thread-node { left: -18px; }
+    .feed-avatar { width: 30px; height: 30px; font-size: 11px; }
+    .feed-pagination { flex-direction: column; gap: 10px; align-items: stretch; }
+    .pag-controls { justify-content: center; }
+    .pag-per-page { justify-content: center; }
+    .pag-info { text-align: center; }
+}
+</style>
+
+<div class="feed-container">
+    {# ── Filter bar ── #}
+    <form class="feed-filter-bar" method="get" action="/feed" id="feed-filter-form">
+        <div class="feed-filter-primary">
+            <div class="feed-search-box">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input type="text" name="search" placeholder="Search subjects, recipients..." value="{{ search }}">
+            </div>
+            <select class="feed-filter-select" name="rep_email" onchange="this.form.submit()">
+                <option value="">All reps</option>
+                {% for r in reps %}
+                <option value="{{ r.email }}" {% if rep_email == r.email %}selected{% endif %}>{{ r.display_name }}</option>
+                {% endfor %}
+            </select>
+            {% set toggle_qs = '' %}
+            {% if search %}{%set toggle_qs = toggle_qs ~ '&search=' ~ search %}{% endif %}
+            {% if rep_email %}{%set toggle_qs = toggle_qs ~ '&rep_email=' ~ rep_email %}{% endif %}
+            {% if date_from %}{%set toggle_qs = toggle_qs ~ '&date_from=' ~ date_from %}{% endif %}
+            {% if date_to %}{%set toggle_qs = toggle_qs ~ '&date_to=' ~ date_to %}{% endif %}
+            {% if score_min %}{%set toggle_qs = toggle_qs ~ '&score_min=' ~ score_min %}{% endif %}
+            {% if score_max %}{%set toggle_qs = toggle_qs ~ '&score_max=' ~ score_max %}{% endif %}
+            <div class="feed-filter-toggle">
+                <a href="/feed?per_page={{ per_page }}{{ toggle_qs }}" class="feed-toggle-btn {% if not unanswered %}active{% endif %}">All</a>
+                <a href="/feed?unanswered=1&per_page={{ per_page }}{{ toggle_qs }}" class="feed-toggle-btn {% if unanswered %}active{% endif %}">Unanswered</a>
+            </div>
+            <button type="button" class="feed-filter-more-btn {% if date_from or date_to or score_min or score_max %}has-filters{% endif %}" onclick="document.getElementById('feed-secondary').classList.toggle('open'); this.classList.toggle('has-filters')">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                Filters
+            </button>
+            <span class="feed-filter-count">{{ total }} item{{ 's' if total != 1 else '' }}</span>
+        </div>
+        <div class="feed-filter-secondary {% if date_from or date_to or score_min or score_max %}open{% endif %}" id="feed-secondary">
+            <span class="feed-filter-label">Date</span>
+            <input type="date" name="date_from" value="{{ date_from }}">
+            <span class="feed-filter-dash">-</span>
+            <input type="date" name="date_to" value="{{ date_to }}">
+            <span class="feed-filter-label" style="margin-left:8px">Score</span>
+            <select name="score_min">
+                <option value="">Min</option>
+                {% for i in range(1, 11) %}
+                <option value="{{ i }}" {% if score_min == i %}selected{% endif %}>{{ i }}</option>
+                {% endfor %}
+            </select>
+            <span class="feed-filter-dash">-</span>
+            <select name="score_max">
+                <option value="">Max</option>
+                {% for i in range(1, 11) %}
+                <option value="{{ i }}" {% if score_max == i %}selected{% endif %}>{{ i }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" style="padding: 5px 12px; font-size: 12px; font-weight: 600; background: #4f46e5; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">Apply</button>
+        </div>
+        {% if unanswered %}<input type="hidden" name="unanswered" value="1">{% endif %}
+        <input type="hidden" name="per_page" value="{{ per_page }}">
+    </form>
+
+    {# ── Feed list ── #}
+    <div class="feed-list">
+        {% set prev_date = namespace(val='') %}
+        {% for item in items %}
+            {# Date separator #}
+            {% set item_date = item.sort_date.strftime('%Y-%m-%d') if item.sort_date else '' %}
+            {% if item_date != prev_date.val %}
+                {% set prev_date.val = item_date %}
+                {% if item.sort_date %}
+                <div class="date-sep">
+                    <span class="date-sep-line"></span>
+                    <span class="date-sep-label">{{ item.sort_date.strftime('%a %-d %b') }}</span>
+                    <span class="date-sep-line"></span>
+                </div>
+                {% endif %}
+            {% endif %}
+
+            {% if item.type == 'email' %}
+            {# ── Standalone email ── #}
+            <div class="feed-item" id="item-{{ item.item_id }}" data-type="email">
+                <div class="feed-row" onclick="toggleFeedItem('item-{{ item.item_id }}')">
+                    <div class="feed-avatar" style="background: {{ avatar_color(item.from_name or item.from_email) }}">{{ initials(item.from_name or item.from_email) }}</div>
+                    <div class="feed-main">
+                        <div class="feed-top">
+                            <span class="feed-rep"><a href="/reps/{{ item.from_email }}">{{ item.from_name or item.from_email }}</a></span>
+                            <span class="feed-arrow">&rarr;</span>
+                            <span class="feed-recipient">{{ item.to_name or item.to_email or '' }}</span>
+                        </div>
+                        <div class="feed-subject">{{ item.subject or '' }}</div>
+                        <div class="feed-preview">{{ strip_sig(item.body_text or '')[:80] }}{% if (item.body_text or '')|length > 80 %}...{% endif %}</div>
+                    </div>
+                    <div class="feed-meta">
+                        <span class="feed-time">{% if item.sort_date %}{{ item.sort_date.strftime('%m-%d %H:%M') }}{% endif %}</span>
+                        <span class="feed-score-badge {{ score_class(item.score) }}">{{ item.score if item.score is not none else '&mdash;' }}</span>
+                    </div>
+                </div>
+                <div class="expand-panel">
+                    {% if item.score_notes %}
+                    <div class="ai-notes">
+                        <svg class="ai-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                        <p>{{ item.score_notes }}</p>
+                    </div>
+                    {% endif %}
+                    <div class="email-body-scroll">
+                        <pre class="email-body-text">{{ strip_sig(item.body_text or '') }}</pre>
+                    </div>
+                    <a class="full-email-link" onclick="event.stopPropagation(); openFeedModal({{ item.item_id }})">View full email with signature</a>
+                </div>
+            </div>
+
+            {% elif item.type == 'conversation' %}
+            {# ── Conversation ── #}
+            <div class="feed-item" id="item-c{{ item.item_id }}" data-type="conversation" data-chain-id="{{ item.item_id }}">
+                <div class="feed-row" onclick="toggleFeedItem('item-c{{ item.item_id }}')">
+                    <div class="feed-avatar" style="background: {{ avatar_color(item.from_name or item.from_email or '') }}">{{ initials(item.from_name or item.from_email or '?') }}</div>
+                    <div class="feed-main">
+                        <div class="feed-top">
+                            <span class="feed-rep">{% if item.from_email %}<a href="/reps/{{ item.from_email }}">{{ item.from_name or item.from_email }}</a>{% else %}{{ item.from_name or '' }}{% endif %}</span>
+                            <span class="chain-badge">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                                {{ item.email_count or 0 }}
+                            </span>
+                            {% if item.is_unanswered %}<div class="unanswered-dot" title="Unanswered"></div>{% endif %}
+                        </div>
+                        <div class="feed-subject">{{ item.subject or '' }}</div>
+                        <div class="feed-preview">{{ item.participants or '' }}</div>
+                    </div>
+                    <div class="feed-meta">
+                        <span class="feed-time">{% if item.sort_date %}{{ item.sort_date.strftime('%m-%d %H:%M') }}{% endif %}</span>
+                        <span class="feed-score-badge {{ score_class(item.score) }}">{{ item.score if item.score is not none else '&mdash;' }}</span>
+                    </div>
+                </div>
+                <div class="thread-panel">
+                    <div class="thread" id="thread-{{ item.item_id }}">
+                        <div style="text-align: center; padding: 16px; color: #9ca3af; font-size: 12px;">Loading thread...</div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        {% else %}
+            <div style="text-align: center; padding: 32px; color: #6b7280;">No items found.</div>
+        {% endfor %}
+    </div>
+
+    {# ── Pagination ── #}
+    {% if total > 0 %}
+    <div class="feed-pagination">
+        <span class="pag-info">Showing <strong>{{ start }}-{{ end }}</strong> of <strong>{{ total }}</strong></span>
+        <div style="display:flex;align-items:center">
+            <div class="pag-controls">
+                {% if page > 1 %}
+                <a class="pag-btn" href="/feed?page={{ page - 1 }}&per_page={{ per_page }}{{ filter_qs }}" title="Previous">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                {% else %}
+                <span class="pag-btn disabled">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </span>
+                {% endif %}
+
+                {% for p in range(1, pages + 1) %}
+                    {% if p == page %}
+                    <span class="pag-btn active">{{ p }}</span>
+                    {% elif p <= 3 or p >= pages - 1 or (p >= page - 1 and p <= page + 1) %}
+                    <a class="pag-btn" href="/feed?page={{ p }}&per_page={{ per_page }}{{ filter_qs }}">{{ p }}</a>
+                    {% elif p == 4 and page > 5 %}
+                    <span class="pag-btn" style="pointer-events:none;border:none;width:20px">...</span>
+                    {% elif p == pages - 2 and page < pages - 4 %}
+                    <span class="pag-btn" style="pointer-events:none;border:none;width:20px">...</span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page < pages %}
+                <a class="pag-btn" href="/feed?page={{ page + 1 }}&per_page={{ per_page }}{{ filter_qs }}" title="Next">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </a>
+                {% else %}
+                <span class="pag-btn disabled">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </span>
+                {% endif %}
+            </div>
+            <div class="pag-per-page">
+                <label>per page</label>
+                <select onchange="location.href='/feed?page=1&per_page='+this.value+'{{ filter_qs }}'">
+                    {% for size in [20, 50, 100] %}
+                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{# ── Full email modal ── #}
+<div class="modal-overlay" id="email-modal" onclick="if(event.target===this)closeFeedModal()">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title" id="modal-subject"></span>
+            <button class="modal-close" onclick="closeFeedModal()">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="ai-notes" id="modal-notes-wrap" style="display:none">
+                <svg class="ai-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                <p id="modal-notes"></p>
+            </div>
+            <div class="modal-meta">
+                <span id="modal-from"></span>
+                <span id="modal-to"></span>
+                <span id="modal-date"></span>
+            </div>
+            <pre class="email-body-text" id="modal-body" style="font-size:13px;color:#4b5563;white-space:pre-wrap;font-family:inherit;line-height:1.55"></pre>
+        </div>
+    </div>
+</div>
+
+<script>
+var openFeedItemId = null;
+var loadedThreads = {};
+
+function toggleFeedItem(id) {
+    if (openFeedItemId && openFeedItemId !== id) {
+        var prev = document.getElementById(openFeedItemId);
+        if (prev) prev.classList.remove('expanded');
+    }
+    var el = document.getElementById(id);
+    el.classList.toggle('expanded');
+    openFeedItemId = el.classList.contains('expanded') ? id : null;
+
+    // Load thread on first expand
+    if (el.classList.contains('expanded') && el.dataset.type === 'conversation') {
+        var chainId = el.dataset.chainId;
+        if (!loadedThreads[chainId]) {
+            loadedThreads[chainId] = true;
+            loadThread(chainId);
+        }
+    }
+}
+
+function loadThread(chainId) {
+    fetch('/api/chains/' + chainId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var container = document.getElementById('thread-' + chainId);
+            if (!container || !data.emails) return;
+            var html = '';
+            var scoreClassFn = function(v) {
+                if (v == null) return '';
+                if (v >= 7) return 'score-high';
+                if (v >= 4) return 'score-mid';
+                return 'score-low';
+            };
+            for (var i = 0; i < data.emails.length; i++) {
+                var e = data.emails[i];
+                var isOut = e.direction === 'EMAIL';
+                html += '<div class="thread-email">';
+                html += '<div class="thread-node ' + (isOut ? 'node-outgoing' : 'node-incoming') + '"></div>';
+                html += '<div class="thread-card ' + (isOut ? 'outgoing' : 'incoming') + '">';
+                html += '<div class="thread-header"><div style="display:flex;align-items:center;gap:6px">';
+                html += '<span class="thread-from">' + (e.from_name || e.from_email) + '</span>';
+                html += '<span class="thread-direction ' + (isOut ? 'dir-sent' : 'dir-received') + '">' + (isOut ? 'Sent' : 'Received') + '</span>';
+                html += '</div><div style="display:flex;align-items:center;gap:8px">';
+                if (e.score && e.score.overall != null) {
+                    html += '<span class="thread-score ' + scoreClassFn(e.score.overall) + '">' + e.score.overall + '</span>';
+                }
+                if (e.timestamp) {
+                    html += '<span class="thread-time">' + e.timestamp.substring(5, 10) + ' ' + e.timestamp.substring(11, 16) + '</span>';
+                }
+                html += '</div></div>';
+                if (isOut && e.score && e.score.notes) {
+                    html += '<div class="thread-ai-notes">' + escapeHtml(e.score.notes) + '</div>';
+                }
+                html += '<div class="thread-body-scroll"><pre class="thread-body">' + escapeHtml(stripSig(e.body_text || '')) + '</pre></div>';
+                html += '</div></div>';
+            }
+            container.innerHTML = html;
+        })
+        .catch(function() {
+            var container = document.getElementById('thread-' + chainId);
+            if (container) container.innerHTML = '<div style="color:#dc2626;padding:8px;font-size:12px">Failed to load thread.</div>';
+        });
+}
+
+function stripSig(t) {
+    var i = t.indexOf('\n--\n');
+    return i > 0 ? t.substring(0, i).trim() : t.trim();
+}
+
+function escapeHtml(t) {
+    var d = document.createElement('div');
+    d.textContent = t;
+    return d.innerHTML;
+}
+
+function openFeedModal(emailId) {
+    fetch('/api/emails/' + emailId)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            document.getElementById('modal-subject').textContent = d.subject || '';
+            document.getElementById('modal-from').textContent = 'From: ' + (d.from_name || d.from_email || '');
+            document.getElementById('modal-to').textContent = 'To: ' + (d.to_name || d.to_email || '');
+            document.getElementById('modal-date').textContent = d.timestamp ? d.timestamp.substring(0, 10) : '';
+            document.getElementById('modal-body').textContent = d.body_text || '';
+            var nw = document.getElementById('modal-notes-wrap');
+            if (d.score && d.score.notes) {
+                document.getElementById('modal-notes').textContent = d.score.notes;
+                nw.style.display = 'flex';
+            } else {
+                nw.style.display = 'none';
+            }
+            document.getElementById('email-modal').classList.add('visible');
+            document.body.style.overflow = 'hidden';
+        });
+}
+
+function closeFeedModal() {
+    document.getElementById('email-modal').classList.remove('visible');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(ev) { if (ev.key === 'Escape') closeFeedModal(); });
+
+// Debounced search
+var searchInput = document.querySelector('.feed-search-box input');
+if (searchInput) {
+    var debounceTimer;
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function() {
+            document.getElementById('feed-filter-form').submit();
+        }, 500);
+    });
+}
+</script>
+{% endblock %}

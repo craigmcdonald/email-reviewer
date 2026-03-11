@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import Rep
 from app.services.chain import get_chain_detail, get_rep_chains
 from app.services.export import export_rep_chains, export_rep_emails
+from app.services.feed import get_feed, get_feed_reps
 from app.services.rep import get_rep_emails, get_team, get_team_trends
 from app.templating import templates
 
@@ -134,6 +135,80 @@ def _section_context(prefix: str, params: dict, result: dict) -> dict:
         f"{prefix}_score_min": _parse_int(params["score_min"]) or "",
         f"{prefix}_score_max": _parse_int(params["score_max"]) or "",
     }
+
+
+@router.get("/feed", include_in_schema=False)
+async def feed_page(
+    request: Request,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
+    search: str = Query(""),
+    rep_email: str = Query(""),
+    date_from: str = Query(""),
+    date_to: str = Query(""),
+    score_min: str = Query(""),
+    score_max: str = Query(""),
+    unanswered: str = Query(""),
+    session: AsyncSession = Depends(get_db),
+):
+    result = await get_feed(
+        session,
+        page=page,
+        per_page=per_page,
+        search=search or None,
+        rep_email=rep_email or None,
+        date_from=_parse_date(date_from),
+        date_to=_parse_date(date_to),
+        score_min=_parse_int(score_min),
+        score_max=_parse_int(score_max),
+        unanswered_only=bool(unanswered),
+    )
+    reps = await get_feed_reps(session)
+    start = (page - 1) * per_page + 1
+    end = start + len(result["items"]) - 1 if result["items"] else 0
+
+    # Build filter query string for pagination links (excludes page/per_page)
+    filter_parts = []
+    if search:
+        filter_parts.append(f"&search={search}")
+    if rep_email:
+        filter_parts.append(f"&rep_email={rep_email}")
+    if date_from:
+        filter_parts.append(f"&date_from={date_from}")
+    if date_to:
+        filter_parts.append(f"&date_to={date_to}")
+    if score_min:
+        filter_parts.append(f"&score_min={score_min}")
+    if score_max:
+        filter_parts.append(f"&score_max={score_max}")
+    if unanswered:
+        filter_parts.append("&unanswered=1")
+    filter_qs = "".join(filter_parts)
+
+    return templates.TemplateResponse(
+        request,
+        "feed.html",
+        {
+            "items": result["items"],
+            "reps": reps,
+            "score_class": score_class,
+            "page": result["page"],
+            "per_page": per_page,
+            "total": result["total"],
+            "pages": result["pages"],
+            "start": start,
+            "end": end,
+            "search": search,
+            "rep_email": rep_email,
+            "date_from": date_from,
+            "date_to": date_to,
+            "score_min": _parse_int(score_min) or "",
+            "score_max": _parse_int(score_max) or "",
+            "unanswered": unanswered,
+            "filter_qs": filter_qs,
+            "active_nav": "feed",
+        },
+    )
 
 
 @router.get("/chains/{chain_id}", include_in_schema=False)
