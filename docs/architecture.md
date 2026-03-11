@@ -320,6 +320,7 @@ HTML views excluded from the OpenAPI schema (`include_in_schema=False`). Rendere
 | `GET /reps/{rep_email}` | Rep detail page with three sections: Outreach (standalone/first-in-sequence outgoing emails), Follow-ups (subsequent sends to same recipient/subject with no reply), Conversations (back-and-forth chains with chain scores). All three sections are always shown and have identical filter/search/pagination structure. Each section uses prefixed query params: `o_` (outreach), `f_` (follow-ups), `c_` (conversations). Conversations section has an additional `c_status` filter (unanswered/answered). Params: `{prefix}_page`, `{prefix}_per_page`, `{prefix}_search`, `{prefix}_date_from`, `{prefix}_date_to`, `{prefix}_score_min`, `{prefix}_score_max`. |
 | `GET /reps/{rep_email}/export` | Downloads an Excel (.xlsx) file. Accepts `?section=` (outreach, follow_ups, conversations) to select which section to export, plus filter query params and `?export_all=true`. |
 | `GET /chains/{chain_id}` | Chain detail page — full conversation thread in chronological order. Each email shows direction, sender, recipient, timestamp, subject, body preview, and individual score. Chain score panel at top with all 4 dimensions and avg_response_hours. Accessed from the rep detail page's Chains section. |
+| `GET /feed` | Unified reverse-chronological feed of all outreach activity across all reps. Two item types: standalone outgoing emails and conversation threads, interleaved by most recent activity. Filter bar with search (ILIKE on subject/to/body), rep dropdown, All/Unanswered toggle, and secondary date range and score range filters. All filter state carried as query params. Standalone emails expand inline with AI notes and scrollable body. Conversations expand with a threaded timeline loaded via the chain detail API. Server-rendered pagination with per-page selector (20/50/100). Accepts `?page`, `?per_page`, `?search`, `?rep_email`, `?date_from`, `?date_to`, `?score_min`, `?score_max`, `?unanswered` query params. |
 
 ### Settings Page (`app/routers/settings.py`)
 
@@ -370,6 +371,13 @@ Async query functions used by both routers:
 - `get_email_detail(session, email_id)` — single email with its score (eager loaded)
 - `get_stats(session)` — summary counts (total_emails, total_scored, total_reps) and avg_overall
 
+### Feed Service (`app/services/feed.py`)
+
+Async query functions for the unified feed page:
+
+- `get_feed(session, *, page=1, per_page=20, search=None, rep_email=None, date_from=None, date_to=None, score_min=None, score_max=None, unanswered_only=False)` — unified feed combining standalone outgoing emails (direction=EMAIL, no chain_id, joined to scores) and conversation chains (email_chains joined to latest scored email for score display). Results are interleaved by sort date descending via a SQL UNION ALL. Each item carries a `type` field ("email" or "conversation"). When `unanswered_only=True`, only chains with `is_unanswered=True` are returned (standalone emails excluded). Returns paginated dict `{items, total, page, per_page, pages}`.
+- `get_feed_reps(session)` — reps eligible for the feed filter dropdown: `rep_type` is set and not Non-Sales. Sorted by display_name.
+
 ### Chain Service (`app/services/chain.py`)
 
 Async query functions for chain visibility:
@@ -379,7 +387,7 @@ Async query functions for chain visibility:
 
 ### Templating (`app/templating.py`)
 
-Shared `Jinja2Templates` instance with a `static_url()` global that appends an MD5 hash query parameter for cache-busting.
+Shared `Jinja2Templates` instance with global functions: `static_url()` appends an MD5 hash query parameter for cache-busting, `avatar_color(name)` returns a deterministic hex colour from a name hash, `initials(name)` extracts first/last initials, `strip_sig(text)` removes email signature blocks. The `strip_signature` filter uses regex to match standard `-- ` delimiters and common sign-off patterns.
 
 ### Static Assets
 

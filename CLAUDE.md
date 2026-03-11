@@ -10,11 +10,24 @@
 - `docs/testing-guide.md` - what to test, what not to test, stack-specific guidance
 - `docs/visual-testing.md` - Selenium screenshot testing
 
+## Environment Setup
+
+PostgreSQL is installed and available in this environment. Start it with `service postgresql start` if it's not running. The test database is `email_reviewer_test` on localhost:5432 (user: `test`, password: `test`).
+
+The test database user and database already exist. Do not waste time recreating them. If pytest fails with an authentication error, create the user and database:
+
+```
+su - postgres -c "psql -c \"CREATE USER test WITH PASSWORD 'test' CREATEDB;\""
+su - postgres -c "psql -c \"CREATE DATABASE email_reviewer_test OWNER test;\""
+```
+
+Dependencies are installed in the system Python (`/usr/local/bin/python`). Always run tests with `python -m pytest` (not bare `pytest`) to use the correct Python environment. Do not install packages or troubleshoot virtualenvs - the system Python has everything.
+
 ## Testing
 
 Read `docs/testing-guide.md` before writing or modifying any test.
 
-PostgreSQL is installed and available in this environment. Start it with `service postgresql start` if it's not running. The test database is `email_reviewer_test` on localhost:5432 (user: `test`, password: `test`). Always run tests — do not skip them.
+Always run tests - do not skip them.
 
 ## Documentation
 

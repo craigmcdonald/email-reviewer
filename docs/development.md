@@ -328,6 +328,7 @@ email-reviewer/
 │   ├── test_api_router.py    # JSON API endpoints (reps, emails, stats, chains)
 │   ├── test_chain_router.py  # Chain API endpoints
 │   ├── test_dashboard_router.py # HTML dashboard views (team, rep detail, chains)
+│   ├── test_feed.py            # Feed page service and route (unified activity view)
 │   ├── test_export.py        # Export service (Excel output)
 │   ├── test_fetcher.py       # Fetcher service (HubSpot API mocked)
 │   ├── test_scorer.py        # Scorer service (Claude API mocked)
