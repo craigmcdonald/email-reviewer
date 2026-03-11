@@ -49,5 +49,6 @@ async def settings_page(
             "settings": settings,
             "dev_mode": not app_config.AUTH_ENABLED,
             "active_tab": tab,
+            "active_nav": "settings",
         },
     )
