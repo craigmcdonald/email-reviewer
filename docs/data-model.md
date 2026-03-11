@@ -14,9 +14,9 @@ Stores email data fetched from HubSpot.
 | hubspot_id | String | NOT NULL, UNIQUE, INDEXED | HubSpot email ID, used for upsert deduplication |
 | timestamp | DateTime | | When the email was sent |
 | from_name | String | | Sender display name |
-| from_email | String | NOT NULL, INDEXED | Sender address |
+| from_email | String | NOT NULL, INDEXED | Sender address (stored lowercase) |
 | to_name | String | | Recipient display name |
-| to_email | String | | Recipient address |
+| to_email | String | | Recipient address (stored lowercase) |
 | subject | String | | Email subject line |
 | body_text | Text | | Plain-text body |
 | direction | String | | EMAIL, INCOMING_EMAIL, or FORWARDED_EMAIL |

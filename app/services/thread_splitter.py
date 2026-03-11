@@ -230,9 +230,10 @@ async def split_email_threads(
 
                         # Process quoted messages
                         for msg in messages[1:]:
-                            msg_from = msg.get("from_email") or ""
+                            msg_from = (msg.get("from_email") or "").lower()
                             msg_subject = msg.get("subject") or email.subject or ""
                             msg_body = msg.get("body_text") or ""
+                            msg_to = (msg.get("to_email") or "").lower()
 
                             dup = _find_duplicate(
                                 from_email=msg_from,
@@ -249,7 +250,7 @@ async def split_email_threads(
                             child = Email(
                                 from_email=msg_from,
                                 from_name=msg.get("from_name"),
-                                to_email=msg.get("to_email"),
+                                to_email=msg_to,
                                 to_name=msg.get("to_name"),
                                 subject=msg_subject,
                                 body_text=msg_body,
