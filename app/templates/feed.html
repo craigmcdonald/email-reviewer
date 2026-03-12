@@ -521,7 +521,7 @@ function showDetailPanel(el) {
         var tiles = document.getElementById('detail-score-tiles');
         tiles.innerHTML = scoreTileHtml([
             {label: 'Overall', val: el.dataset.score},
-            {label: 'Personalisation', val: el.dataset.scorePersonalisation},
+            {label: 'Pers.', val: el.dataset.scorePersonalisation},
             {label: 'Clarity', val: el.dataset.scoreClarity},
             {label: 'Value Prop', val: el.dataset.scoreValueProposition},
             {label: 'CTA', val: el.dataset.scoreCta}
@@ -606,7 +606,7 @@ function loadDetailThread(chainId) {
                 if (isOut && e.score) {
                     html += '<div class="score-grid">';
                     html += scoreGridCellHtml('Overall', e.score.overall);
-                    html += scoreGridCellHtml('Personalisation', e.score.personalisation);
+                    html += scoreGridCellHtml('Pers.', e.score.personalisation);
                     html += scoreGridCellHtml('Clarity', e.score.clarity);
                     html += scoreGridCellHtml('Value Prop', e.score.value_proposition);
                     html += scoreGridCellHtml('CTA', e.score.cta);
@@ -649,7 +649,7 @@ function loadThread(chainId) {
                 if (isOut && e.score) {
                     html += '<div class="score-grid">';
                     html += scoreGridCellHtml('Overall', e.score.overall);
-                    html += scoreGridCellHtml('Personalisation', e.score.personalisation);
+                    html += scoreGridCellHtml('Pers.', e.score.personalisation);
                     html += scoreGridCellHtml('Clarity', e.score.clarity);
                     html += scoreGridCellHtml('Value Prop', e.score.value_proposition);
                     html += scoreGridCellHtml('CTA', e.score.cta);

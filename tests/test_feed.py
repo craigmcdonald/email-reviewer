@@ -762,18 +762,18 @@ class TestFeedMasterDetail:
 
 
 class TestFeedScoreLabels:
-    async def test_detail_panel_score_tiles_use_full_labels(self, client):
+    async def test_detail_panel_score_tiles_use_readable_labels(self, client):
         resp = await client.get("/feed")
         assert resp.status_code == 200
-        assert "label: 'Personalisation'" in resp.text
+        assert "label: 'Pers.'" in resp.text
         assert "label: 'Clarity'" in resp.text
         assert "label: 'Value Prop'" in resp.text
         assert "label: 'CTA'" in resp.text
 
-    async def test_thread_score_grid_uses_full_labels(self, client):
+    async def test_thread_score_grid_uses_readable_labels(self, client):
         resp = await client.get("/feed")
         assert resp.status_code == 200
-        assert "scoreGridCellHtml('Personalisation'" in resp.text
+        assert "scoreGridCellHtml('Pers.'" in resp.text
         assert "scoreGridCellHtml('Clarity'" in resp.text
         assert "scoreGridCellHtml('Value Prop'" in resp.text
         assert "scoreGridCellHtml('CTA'" in resp.text
