@@ -659,6 +659,63 @@ class TestFeedNavigation:
         assert 'href="/feed"' in resp.text
 
 
+class TestFeedMasterDetail:
+    async def test_feed_page_has_detail_panel(self, client):
+        resp = await client.get("/feed")
+        assert resp.status_code == 200
+        assert "feed-detail-panel" in resp.text
+
+    async def test_feed_page_has_split_layout(self, client):
+        resp = await client.get("/feed")
+        assert "feed-split" in resp.text
+
+    async def test_standalone_email_has_score_tiles_data(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="rep@co.com", display_name="Rep One", rep_type="SDR")
+        e = await make_email(
+            from_email="rep@co.com",
+            from_name="Rep One",
+            to_email="client@test.com",
+            subject="Detail Test",
+            body_text="Body text for detail panel.",
+            direction=EmailDirection.EMAIL.value,
+            timestamp=_ts(2),
+        )
+        await make_score(
+            email_id=e.id, overall=8, personalisation=7, clarity=9,
+            value_proposition=6, cta=8, notes="Strong opener", scored_at=_ts(2),
+        )
+
+        resp = await client.get("/feed")
+        assert resp.status_code == 200
+        # Score data available via data attributes for JS detail panel
+        assert "Detail Test" in resp.text
+        assert "data-score" in resp.text
+
+    async def test_conversation_has_chain_id_data(
+        self, client, make_rep, make_email, make_score, make_chain
+    ):
+        await make_rep(email="rep@co.com", display_name="Rep One", rep_type="SDR")
+        chain = await make_chain(
+            normalized_subject="Thread for Detail",
+            last_activity_at=_ts(1),
+            email_count=2,
+            is_unanswered=True,
+        )
+        e = await make_email(
+            from_email="rep@co.com",
+            from_name="Rep One",
+            direction=EmailDirection.EMAIL.value,
+            timestamp=_ts(2),
+            chain_id=chain.id,
+        )
+        await make_score(email_id=e.id, overall=7, scored_at=_ts(2))
+
+        resp = await client.get("/feed")
+        assert "data-chain-id" in resp.text
+
+
 class TestFeedThreadDetail:
     async def test_chain_detail_api_returns_emails(
         self, client, make_rep, make_email, make_score, make_chain
