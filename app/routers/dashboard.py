@@ -207,7 +207,7 @@ async def feed_page(
             "score_max": _parse_int(score_max) or "",
             "unanswered": unanswered,
             "filter_qs": filter_qs,
-            "active_nav": "feed",
+            "active_nav": "inbox",
         },
     )
 

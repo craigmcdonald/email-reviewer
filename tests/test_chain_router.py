@@ -32,10 +32,50 @@ class TestGetChainDetail:
         data = resp.json()
         assert data["normalized_subject"] == "Project update"
         assert len(data["emails"]) == 2
-        # Emails in timestamp order
-        assert data["emails"][0]["from_email"] == "alice@example.com"
-        assert data["emails"][1]["from_email"] == "bob@example.com"
+        # Emails in reverse chronological order (newest first)
+        assert data["emails"][0]["from_email"] == "bob@example.com"
+        assert data["emails"][1]["from_email"] == "alice@example.com"
         assert data["chain_score"]["conversation_quality"] == 7
+
+    async def test_emails_ordered_reverse_chronological(
+        self, client, make_chain, make_email, make_chain_score
+    ):
+        chain = await make_chain(
+            normalized_subject="Thread order test",
+            email_count=3,
+            started_at=datetime(2025, 2, 1),
+            last_activity_at=datetime(2025, 2, 5),
+        )
+        await make_email(
+            from_email="first@example.com",
+            subject="Thread order test",
+            chain_id=chain.id,
+            position_in_chain=1,
+            timestamp=datetime(2025, 2, 1),
+        )
+        await make_email(
+            from_email="second@example.com",
+            subject="Re: Thread order test",
+            chain_id=chain.id,
+            position_in_chain=2,
+            timestamp=datetime(2025, 2, 3),
+        )
+        await make_email(
+            from_email="third@example.com",
+            subject="Re: Thread order test",
+            chain_id=chain.id,
+            position_in_chain=3,
+            timestamp=datetime(2025, 2, 5),
+        )
+        await make_chain_score(chain_id=chain.id)
+
+        resp = await client.get(f"/api/chains/{chain.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["emails"]) == 3
+        assert data["emails"][0]["from_email"] == "third@example.com"
+        assert data["emails"][1]["from_email"] == "second@example.com"
+        assert data["emails"][2]["from_email"] == "first@example.com"
 
     async def test_returns_404_for_nonexistent_chain(self, client):
         resp = await client.get("/api/chains/99999")
