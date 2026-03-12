@@ -1210,6 +1210,207 @@ class TestUpdateChainsForEmails:
         await db.refresh(e3)
         assert e3.chain_id == original_chain_id
 
+    async def test_subject_neighbor_search_filters_by_normalized_subject(self, db, make_email):
+        """Subject-based neighbor search must not pull in emails with different subjects.
+
+        An alice-to-bob email about "Budget Review" should not pull in an
+        unrelated alice-to-bob email about "Team Offsite" as a neighbor,
+        even though they share participants and fall within the 30-day window.
+        """
+        # Existing chain: alice->bob about "Team Offsite"
+        e1 = await make_email(
+            subject="Team Offsite",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            subject="Re: Team Offsite",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        await db.refresh(e1)
+        offsite_chain_id = e1.chain_id
+        assert offsite_chain_id is not None
+
+        # Add a chain score so we can verify it survives
+        offsite_score = ChainScore(
+            chain_id=offsite_chain_id,
+            progression=8, responsiveness=7,
+            persistence=6, conversation_quality=9,
+            scored_at=datetime(2025, 1, 2),
+        )
+        db.add(offsite_score)
+        await db.commit()
+
+        # New emails: alice->bob about "Budget Review" (different subject, same participants)
+        e3 = await make_email(
+            subject="Budget Review",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 5, 10, 0),
+        )
+        e4 = await make_email(
+            subject="Re: Budget Review",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 5, 11, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e3.id, e4.id})
+        await db.commit()
+
+        # The "Team Offsite" chain must be untouched
+        await db.refresh(e1)
+        await db.refresh(e2)
+        assert e1.chain_id == offsite_chain_id
+        assert e2.chain_id == offsite_chain_id
+
+        # The chain score must survive
+        score_result = await db.execute(
+            select(ChainScore).where(ChainScore.chain_id == offsite_chain_id)
+        )
+        assert score_result.scalar_one_or_none() is not None
+
+        # The "Budget Review" emails should form their own chain
+        await db.refresh(e3)
+        await db.refresh(e4)
+        assert e3.chain_id is not None
+        assert e3.chain_id == e4.chain_id
+        assert e3.chain_id != offsite_chain_id
+
+    async def test_incremental_merges_two_chains_via_bridging_email(self, db, make_email):
+        """A new email that bridges two existing chains merges them.
+
+        Scenario: chain2's first email has in_reply_to pointing to a message
+        that hasn't arrived yet. When the bridging email arrives with that
+        message_id AND in_reply_to pointing to chain1, it transitively links
+        both chains via message-id threading.
+
+        When two chains merge, the kept chain's stale ChainScore should be
+        deleted since it was scored against a different conversation.
+        """
+        # Chain 1: alice->bob, bob replies
+        e1 = await make_email(
+            message_id="<chain1-a@x.com>",
+            subject="Project Alpha",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<chain1-b@x.com>",
+            in_reply_to="<chain1-a@x.com>",
+            subject="Re: Project Alpha",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        await db.refresh(e1)
+        chain1_id = e1.chain_id
+        assert chain1_id is not None
+
+        # Chain 2: e3 replies to a message (<bridge@x.com>) that hasn't
+        # arrived yet. e3 and e4 are linked by message-id threading.
+        e3 = await make_email(
+            message_id="<chain2-a@x.com>",
+            in_reply_to="<bridge@x.com>",
+            subject="Re: Project Alpha",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 2, 10, 0),
+        )
+        e4 = await make_email(
+            message_id="<chain2-b@x.com>",
+            in_reply_to="<chain2-a@x.com>",
+            subject="Re: Project Alpha",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 2, 11, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e3.id, e4.id})
+        await db.commit()
+
+        await db.refresh(e3)
+        chain2_id = e3.chain_id
+        assert chain2_id is not None
+        assert chain2_id != chain1_id
+
+        # Add chain scores to both
+        score1 = ChainScore(
+            chain_id=chain1_id,
+            progression=8, responsiveness=7,
+            persistence=6, conversation_quality=9,
+            scored_at=datetime(2025, 1, 3),
+        )
+        score2 = ChainScore(
+            chain_id=chain2_id,
+            progression=5, responsiveness=4,
+            persistence=3, conversation_quality=6,
+            scored_at=datetime(2025, 1, 3),
+        )
+        db.add(score1)
+        db.add(score2)
+        await db.commit()
+
+        # Bridging email: its message_id is what e3 was replying to, and
+        # it replies to chain1's last message. This transitively links both
+        # chains via: chain1 <- e5 <- e3 -> chain2.
+        e5 = await make_email(
+            message_id="<bridge@x.com>",
+            in_reply_to="<chain1-b@x.com>",
+            subject="Re: Project Alpha",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 3, 10, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e5.id})
+        await db.commit()
+
+        # All emails should be in the same chain
+        for e in [e1, e2, e3, e4, e5]:
+            await db.refresh(e)
+        chain_ids = {e.chain_id for e in [e1, e2, e3, e4, e5]}
+        assert len(chain_ids) == 1, f"Expected one chain, got {chain_ids}"
+        merged_chain_id = chain_ids.pop()
+
+        # The stale chain score on the kept chain should be deleted
+        score_result = await db.execute(
+            select(ChainScore).where(ChainScore.chain_id == merged_chain_id)
+        )
+        assert score_result.scalar_one_or_none() is None, (
+            "Stale chain score should be deleted after merge"
+        )
+
+        # The deleted chain's score should also be gone
+        all_scores = await db.execute(select(ChainScore))
+        assert all_scores.scalars().all() == []
+
     async def test_empty_email_ids_no_op(self, db):
         """Passing empty set of IDs returns immediately."""
         result = await update_chains_for_emails(db, set())
