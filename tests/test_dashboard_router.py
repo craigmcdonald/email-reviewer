@@ -3,29 +3,40 @@ from datetime import datetime
 import pytest
 
 
-class TestTeamPage:
+class TestRootRedirectsToInbox:
     async def test_get_root_returns_200(self, client):
         resp = await client.get("/")
         assert resp.status_code == 200
 
-    async def test_get_root_contains_team(self, client):
+    async def test_get_root_returns_inbox(self, client):
         resp = await client.get("/")
+        # Root should serve the inbox/feed page, not team
+        assert "feed-split" in resp.text
+
+
+class TestTeamPage:
+    async def test_get_team_returns_200(self, client):
+        resp = await client.get("/team")
+        assert resp.status_code == 200
+
+    async def test_get_team_contains_team(self, client):
+        resp = await client.get("/team")
         assert "Team" in resp.text
 
-    async def test_get_root_accepts_pagination_params(
+    async def test_get_team_accepts_pagination_params(
         self, client, make_rep, make_email, make_score
     ):
         for i in range(25):
             rep = await make_rep(email=f"r{i:03d}@x.com", display_name=f"Rep {i:03d}")
             em = await make_email(from_email=rep.email, subject=f"Subj {i}")
             await make_score(email_id=em.id, overall=7)
-        resp = await client.get("/", params={"page": 2, "per_page": 20})
+        resp = await client.get("/team", params={"page": 2, "per_page": 20})
         assert resp.status_code == 200
         # Page 2 should show 5 reps (25 total, 20 per page)
         assert "Page 2 of 2" in resp.text
 
-    async def test_get_root_default_pagination(self, client):
-        resp = await client.get("/")
+    async def test_get_team_default_pagination(self, client):
+        resp = await client.get("/team")
         assert resp.status_code == 200
 
     async def test_team_page_flags_unassigned_rep(
@@ -35,7 +46,7 @@ class TestTeamPage:
         em = await make_email(from_email="unassigned@example.com", subject="Test")
         await make_score(email_id=em.id, overall=7)
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert resp.status_code == 200
         assert "Unassigned" in resp.text
         assert "rep-type-select" in resp.text
@@ -47,7 +58,7 @@ class TestTeamPage:
         em = await make_email(from_email="typed@example.com", subject="Test")
         await make_score(email_id=em.id, overall=7)
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert resp.status_code == 200
         assert "SDR" in resp.text
 
@@ -58,7 +69,7 @@ class TestTeamPage:
         em = await make_email(from_email="typed@example.com", subject="Test")
         await make_score(email_id=em.id, overall=7)
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert resp.status_code == 200
         # Dropdown should be hidden by default; only edit icon shown
         assert "rep-type-edit-btn" in resp.text
@@ -71,7 +82,7 @@ class TestTeamPage:
         em = await make_email(from_email="untyped@example.com", subject="Test")
         await make_score(email_id=em.id, overall=7)
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert resp.status_code == 200
         # Dropdown should be visible for unassigned reps
         assert "rep-type-select" in resp.text
@@ -87,7 +98,7 @@ class TestTeamPage:
         em2 = await make_email(from_email="am@example.com", subject="Test AM")
         await make_score(email_id=em2.id, overall=6)
 
-        resp = await client.get("/", params={"rep_type": "SDR"})
+        resp = await client.get("/team", params={"rep_type": "SDR"})
         assert resp.status_code == 200
         assert "SDR Rep" in resp.text
         assert "AM Rep" not in resp.text
@@ -103,7 +114,7 @@ class TestTeamPage:
         em2 = await make_email(from_email="am@example.com", subject="Test AM")
         await make_score(email_id=em2.id, overall=6)
 
-        resp = await client.get("/", params={"rep_type": ""})
+        resp = await client.get("/team", params={"rep_type": ""})
         assert resp.status_code == 200
         assert "SDR Rep" in resp.text
         assert "AM Rep" in resp.text
@@ -119,7 +130,7 @@ class TestTeamPage:
         em2 = await make_email(from_email="new@example.com", subject="Test New")
         await make_score(email_id=em2.id, overall=6)
 
-        resp = await client.get("/", params={"rep_type": "Unassigned"})
+        resp = await client.get("/team", params={"rep_type": "Unassigned"})
         assert resp.status_code == 200
         assert "New Rep" in resp.text
         assert "SDR Rep" not in resp.text

@@ -53,7 +53,7 @@ def resp_time_bar_class(hours) -> str:
     return "bar-low"
 
 
-@router.get("/", include_in_schema=False)
+@router.get("/team", include_in_schema=False)
 async def team(
     request: Request,
     page: int = Query(1, ge=1),
@@ -138,6 +138,7 @@ def _section_context(prefix: str, params: dict, result: dict) -> dict:
     }
 
 
+@router.get("/", include_in_schema=False)
 @router.get("/feed", include_in_schema=False)
 async def feed_page(
     request: Request,

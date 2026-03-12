@@ -486,7 +486,7 @@ class TestFeedRoute:
 
     async def test_feed_page_has_nav_link(self, client):
         resp = await client.get("/feed")
-        assert 'href="/feed"' in resp.text
+        assert 'href="/"' in resp.text
 
     async def test_feed_page_contains_filter_controls(self, client):
         resp = await client.get("/feed")
@@ -675,22 +675,22 @@ class TestFeedRoute:
 
 
 class TestFeedNavigation:
-    async def test_team_page_has_feed_link(self, client):
-        resp = await client.get("/")
-        assert 'href="/feed"' in resp.text
+    async def test_team_page_has_inbox_link(self, client):
+        resp = await client.get("/team")
+        assert 'href="/"' in resp.text
 
-    async def test_settings_page_has_feed_link(self, client):
+    async def test_settings_page_has_inbox_link(self, client):
         resp = await client.get("/settings")
-        assert 'href="/feed"' in resp.text
+        assert 'href="/"' in resp.text
 
     async def test_team_page_nav_shows_inbox_not_feed(self, client):
-        resp = await client.get("/")
+        resp = await client.get("/team")
         nav_html = resp.text.split("<nav")[1].split("</nav>")[0]
         assert "Inbox" in nav_html
         assert ">Feed<" not in nav_html
 
     async def test_nav_order_inbox_team_settings(self, client):
-        resp = await client.get("/")
+        resp = await client.get("/team")
         nav_html = resp.text.split("<nav")[1].split("</nav>")[0]
         inbox_pos = nav_html.index("Inbox")
         team_pos = nav_html.index("Team")
