@@ -337,12 +337,12 @@ chrome_options.binary_location = "/usr/bin/google-chrome-stable"
 driver = webdriver.Chrome(options=chrome_options)
 
 urls = {
-    "team": f"http://127.0.0.1:{PORT}/",
-    "team_filtered_sdr": f"http://127.0.0.1:{PORT}/?rep_type=SDR",
-    "team_filtered_unassigned": f"http://127.0.0.1:{PORT}/?rep_type=Unassigned",
+    "inbox": f"http://127.0.0.1:{PORT}/",
+    "inbox_unanswered": f"http://127.0.0.1:{PORT}/?unanswered=1",
+    "team": f"http://127.0.0.1:{PORT}/team",
+    "team_filtered_sdr": f"http://127.0.0.1:{PORT}/team?rep_type=SDR",
+    "team_filtered_unassigned": f"http://127.0.0.1:{PORT}/team?rep_type=Unassigned",
     "rep_detail": f"http://127.0.0.1:{PORT}/reps/{REP_EMAIL}",
-    "feed": f"http://127.0.0.1:{PORT}/feed",
-    "feed_unanswered": f"http://127.0.0.1:{PORT}/feed?unanswered=1",
     "settings_general": f"http://127.0.0.1:{PORT}/settings?tab=general",
     "settings_evaluation": f"http://127.0.0.1:{PORT}/settings?tab=evaluation",
 }
@@ -356,16 +356,16 @@ for name, url in urls.items():
     driver.save_screenshot(f"/tmp/{name}.png")
     print(f"Saved /tmp/{name}.png")
 
-# Feed detail panel screenshot
-driver.get(f"http://127.0.0.1:{PORT}/feed")
+# Inbox detail panel screenshot
+driver.get(f"http://127.0.0.1:{PORT}/")
 time.sleep(1)
 driver.execute_script("var row = document.querySelector('.feed-row'); if (row) row.click();")
 time.sleep(1)
 total_height = driver.execute_script("return document.body.scrollHeight")
 driver.set_window_size(1440, max(900, total_height + 200))
 time.sleep(0.5)
-driver.save_screenshot("/tmp/feed_detail_panel.png")
-print("Saved /tmp/feed_detail_panel.png")
+driver.save_screenshot("/tmp/inbox_detail_panel.png")
+print("Saved /tmp/inbox_detail_panel.png")
 
 # Expanded email row + modal screenshots
 driver.get(f"http://127.0.0.1:{PORT}/reps/{REP_EMAIL}")

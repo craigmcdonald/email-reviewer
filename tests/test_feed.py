@@ -708,6 +708,10 @@ class TestFeedMasterDetail:
         resp = await client.get("/feed")
         assert "feed-split" in resp.text
 
+    async def test_detail_panel_width_at_least_520(self, client):
+        resp = await client.get("/feed")
+        assert "width: 520px" in resp.text
+
     async def test_standalone_email_has_score_tiles_data(
         self, client, make_rep, make_email, make_score
     ):
