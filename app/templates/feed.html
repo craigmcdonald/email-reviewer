@@ -31,6 +31,29 @@
 .feed-filter-secondary select { border: 1px solid #dde0e4; border-radius: 8px; padding: 5px 8px; font-size: 13px; background: #fff; color: #1a1a2e; outline: none; }
 .feed-filter-dash { color: #9ca3af; font-size: 12px; }
 
+/* Split layout */
+.feed-split { display: flex; gap: 20px; align-items: flex-start; }
+.feed-list-col { flex: 1; min-width: 0; }
+.feed-detail-panel { width: 420px; flex-shrink: 0; position: sticky; top: 20px; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); overflow: hidden; display: none; }
+@media (min-width: 1101px) { .feed-detail-panel { display: block; } .expand-panel, .thread-panel { display: none !important; } .feed-item.expanded > .feed-row { background: #eef2ff; border-left: 3px solid #4f46e5; } }
+@media (max-width: 1100px) { .feed-split { display: block; } }
+
+/* Detail panel inner */
+.detail-header { padding: 14px 16px; border-bottom: 1px solid #f0f1f3; display: flex; align-items: center; justify-content: space-between; }
+.detail-header-title { font-size: 14px; font-weight: 600; color: #1a1a2e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-placeholder { padding: 48px 16px; text-align: center; color: #9ca3af; font-size: 13px; }
+.detail-content { display: none; }
+.score-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 14px 16px; }
+.score-tile { background: #f9fafb; border-radius: 8px; padding: 10px 12px; text-align: center; }
+.score-tile-label { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.score-tile-value { font-size: 20px; font-weight: 700; }
+.detail-section { padding: 0 16px 14px; }
+.detail-section-title { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+.detail-body-scroll { max-height: 200px; overflow-y: auto; border: 1px solid #eef0f3; border-radius: 6px; padding: 10px; background: #fff; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
+.detail-body-text { font-size: 13px; color: #4b5563; white-space: pre-wrap; font-family: inherit; line-height: 1.55; margin: 0; }
+.detail-full-link { display: inline-block; margin-top: 6px; font-size: 12px; color: #6b7280; cursor: pointer; text-decoration: none; }
+.detail-full-link:hover { color: #4f46e5; text-decoration: underline; }
+
 /* Feed items */
 .feed-list { display: flex; flex-direction: column; gap: 8px; }
 .feed-item { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); overflow: hidden; transition: box-shadow 0.15s; }
@@ -196,7 +219,9 @@
         <input type="hidden" name="per_page" value="{{ per_page }}">
     </form>
 
-    {# ── Feed list ── #}
+    {# ── Split layout: feed list + detail panel ── #}
+    <div class="feed-split">
+    <div class="feed-list-col">
     <div class="feed-list">
         {% set prev_date = namespace(val='') %}
         {% for item in items %}
@@ -215,7 +240,19 @@
 
             {% if item.type == 'email' %}
             {# ── Standalone email ── #}
-            <div class="feed-item" id="item-{{ item.item_id }}" data-type="email">
+            <div class="feed-item" id="item-{{ item.item_id }}" data-type="email"
+                 data-score="{{ item.score if item.score is not none else '' }}"
+                 data-score-personalisation="{{ item.score_personalisation if item.score_personalisation is not none else '' }}"
+                 data-score-clarity="{{ item.score_clarity if item.score_clarity is not none else '' }}"
+                 data-score-value-proposition="{{ item.score_value_proposition if item.score_value_proposition is not none else '' }}"
+                 data-score-cta="{{ item.score_cta if item.score_cta is not none else '' }}"
+                 data-subject="{{ item.subject or '' }}"
+                 data-from="{{ item.from_name or item.from_email or '' }}"
+                 data-to="{{ item.to_name or item.to_email or '' }}"
+                 data-notes="{{ item.score_notes or '' }}"
+                 data-body="{{ item.body_text or '' }}"
+                 data-email-id="{{ item.item_id }}"
+                 data-time="{% if item.sort_date %}{{ item.sort_date.strftime('%Y-%m-%d %H:%M') }}{% endif %}">
                 <div class="feed-row" onclick="toggleFeedItem('item-{{ item.item_id }}')">
                     <div class="feed-avatar" style="background: {{ avatar_color(item.from_name or item.from_email) }}">{{ initials(item.from_name or item.from_email) }}</div>
                     <div class="feed-main">
@@ -282,6 +319,7 @@
 
     {# ── Pagination ── #}
     {% if total > 0 %}
+
     <div class="feed-pagination">
         <span class="pag-info">Showing <strong>{{ start }}-{{ end }}</strong> of <strong>{{ total }}</strong></span>
         <div style="display:flex;align-items:center">
@@ -329,6 +367,41 @@
         </div>
     </div>
     {% endif %}
+    </div>{# /feed-list-col #}
+
+    {# ── Detail panel (desktop only, populated via JS) ── #}
+    <div class="feed-detail-panel" id="feed-detail-panel">
+        <div class="detail-header">
+            <span class="detail-header-title" id="detail-title">Details</span>
+        </div>
+        <div class="detail-placeholder" id="detail-placeholder">
+            Click an item to view details
+        </div>
+        <div class="detail-content" id="detail-content">
+            <div class="score-tiles" id="detail-score-tiles"></div>
+            <div class="detail-section" id="detail-notes-section" style="display:none">
+                <div class="detail-section-title">AI Notes</div>
+                <div class="ai-notes" id="detail-notes-box">
+                    <svg class="ai-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                    <p id="detail-notes-text"></p>
+                </div>
+            </div>
+            <div class="detail-section" id="detail-body-section">
+                <div class="detail-section-title">Email Body</div>
+                <div class="detail-body-scroll">
+                    <pre class="detail-body-text" id="detail-body-text"></pre>
+                </div>
+                <a class="detail-full-link" id="detail-full-link" onclick="openFeedModal(this.dataset.emailId)">View full email with signature</a>
+            </div>
+            <div class="detail-section" id="detail-thread-section" style="display:none">
+                <div class="detail-section-title">Thread</div>
+                <div class="thread" id="detail-thread-container">
+                    <div style="text-align: center; padding: 16px; color: #9ca3af; font-size: 12px;">Loading thread...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>{# /feed-split #}
 </div>
 
 {# ── Full email modal ── #}
@@ -359,14 +432,32 @@
 var openFeedItemId = null;
 var loadedThreads = {};
 
+function isDesktopDetail() {
+    return window.innerWidth > 1100 && document.getElementById('feed-detail-panel');
+}
+
 function toggleFeedItem(id) {
-    if (openFeedItemId && openFeedItemId !== id) {
-        var prev = document.getElementById(openFeedItemId);
-        if (prev) prev.classList.remove('expanded');
-    }
     var el = document.getElementById(id);
-    el.classList.toggle('expanded');
-    openFeedItemId = el.classList.contains('expanded') ? id : null;
+    if (!el) return;
+
+    if (isDesktopDetail()) {
+        // Desktop: populate detail panel instead of inline expand
+        if (openFeedItemId) {
+            var prev = document.getElementById(openFeedItemId);
+            if (prev) prev.classList.remove('expanded');
+        }
+        el.classList.add('expanded');
+        openFeedItemId = id;
+        showDetailPanel(el);
+    } else {
+        // Mobile/tablet: inline expand
+        if (openFeedItemId && openFeedItemId !== id) {
+            var prev = document.getElementById(openFeedItemId);
+            if (prev) prev.classList.remove('expanded');
+        }
+        el.classList.toggle('expanded');
+        openFeedItemId = el.classList.contains('expanded') ? id : null;
+    }
 
     // Load thread on first expand
     if (el.classList.contains('expanded') && el.dataset.type === 'conversation') {
@@ -374,8 +465,114 @@ function toggleFeedItem(id) {
         if (!loadedThreads[chainId]) {
             loadedThreads[chainId] = true;
             loadThread(chainId);
+            if (isDesktopDetail()) loadDetailThread(chainId);
         }
     }
+}
+
+function showDetailPanel(el) {
+    var placeholder = document.getElementById('detail-placeholder');
+    var content = document.getElementById('detail-content');
+    var title = document.getElementById('detail-title');
+
+    placeholder.style.display = 'none';
+    content.style.display = 'block';
+
+    if (el.dataset.type === 'email') {
+        title.textContent = el.dataset.subject || 'Email';
+
+        // Score tiles
+        var tiles = document.getElementById('detail-score-tiles');
+        var dims = [
+            {label: 'Overall', val: el.dataset.score},
+            {label: 'Personal', val: el.dataset.scorePersonalisation},
+            {label: 'Clarity', val: el.dataset.scoreClarity},
+            {label: 'Value Prop', val: el.dataset.scoreValueProposition},
+            {label: 'CTA', val: el.dataset.scoreCta}
+        ];
+        var tilesHtml = '';
+        for (var i = 0; i < dims.length; i++) {
+            var v = dims[i].val;
+            var cls = '';
+            if (v !== '' && v != null) {
+                var n = parseFloat(v);
+                cls = n >= 7 ? 'score-high' : n >= 4 ? 'score-mid' : 'score-low';
+            }
+            tilesHtml += '<div class="score-tile"><div class="score-tile-label">' + dims[i].label + '</div><div class="score-tile-value ' + cls + '">' + (v || '—') + '</div></div>';
+        }
+        tiles.innerHTML = tilesHtml;
+        tiles.style.display = 'grid';
+
+        // Notes
+        var notesSection = document.getElementById('detail-notes-section');
+        if (el.dataset.notes) {
+            document.getElementById('detail-notes-text').textContent = el.dataset.notes;
+            notesSection.style.display = 'block';
+        } else {
+            notesSection.style.display = 'none';
+        }
+
+        // Body
+        var bodySection = document.getElementById('detail-body-section');
+        bodySection.style.display = 'block';
+        document.getElementById('detail-body-text').textContent = stripSig(el.dataset.body || '');
+        var fullLink = document.getElementById('detail-full-link');
+        fullLink.dataset.emailId = el.dataset.emailId;
+        fullLink.style.display = 'inline-block';
+
+        // Hide thread
+        document.getElementById('detail-thread-section').style.display = 'none';
+    } else if (el.dataset.type === 'conversation') {
+        title.textContent = el.querySelector('.feed-subject') ? el.querySelector('.feed-subject').textContent : 'Conversation';
+
+        // Hide score tiles for conversations
+        document.getElementById('detail-score-tiles').style.display = 'none';
+        document.getElementById('detail-notes-section').style.display = 'none';
+        document.getElementById('detail-body-section').style.display = 'none';
+
+        // Show thread section
+        var threadSection = document.getElementById('detail-thread-section');
+        threadSection.style.display = 'block';
+        loadDetailThread(el.dataset.chainId);
+    }
+}
+
+function loadDetailThread(chainId) {
+    var container = document.getElementById('detail-thread-container');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;padding:16px;color:#9ca3af;font-size:12px">Loading thread...</div>';
+    fetch('/api/chains/' + chainId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.emails) return;
+            var html = '';
+            for (var i = 0; i < data.emails.length; i++) {
+                var e = data.emails[i];
+                var isOut = e.direction === 'EMAIL';
+                html += '<div class="thread-email">';
+                html += '<div class="thread-node ' + (isOut ? 'node-outgoing' : 'node-incoming') + '"></div>';
+                html += '<div class="thread-card ' + (isOut ? 'outgoing' : 'incoming') + '">';
+                html += '<div class="thread-header"><div style="display:flex;align-items:center;gap:6px">';
+                html += '<span class="thread-from">' + escapeHtml(e.from_name || e.from_email) + '</span>';
+                html += '<span class="thread-direction ' + (isOut ? 'dir-sent' : 'dir-received') + '">' + (isOut ? 'Sent' : 'Received') + '</span>';
+                html += '</div><div style="display:flex;align-items:center;gap:8px">';
+                if (e.score && e.score.overall != null) {
+                    var sc = e.score.overall;
+                    var scCls = sc >= 7 ? 'score-high' : sc >= 4 ? 'score-mid' : 'score-low';
+                    html += '<span class="thread-score ' + scCls + '">' + sc + '</span>';
+                }
+                if (e.timestamp) html += '<span class="thread-time">' + e.timestamp.substring(5, 10) + ' ' + e.timestamp.substring(11, 16) + '</span>';
+                html += '</div></div>';
+                if (isOut && e.score && e.score.notes) html += '<div class="thread-ai-notes">' + escapeHtml(e.score.notes) + '</div>';
+                html += '<div class="thread-body-scroll"><pre class="thread-body">' + escapeHtml(stripSig(e.body_text || '')) + '</pre></div>';
+                html += '<a class="full-email-link" onclick="event.stopPropagation(); openThreadEmailModal(this)" data-subject="' + escapeAttr(e.subject || '') + '" data-from="' + escapeAttr(e.from_name || e.from_email || '') + '" data-to="' + escapeAttr(e.to_name || e.to_email || '') + '" data-date="' + escapeAttr(e.timestamp ? e.timestamp.substring(0, 16).replace('T', ' ') : '') + '" data-body="' + escapeAttr(e.body_text || '') + '" data-notes="' + escapeAttr(isOut && e.score && e.score.notes ? e.score.notes : '') + '">View full email with signature</a>';
+                html += '</div></div>';
+            }
+            container.innerHTML = html;
+        })
+        .catch(function() {
+            container.innerHTML = '<div style="color:#dc2626;padding:8px;font-size:12px">Failed to load thread.</div>';
+        });
 }
 
 function loadThread(chainId) {

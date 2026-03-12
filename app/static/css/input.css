@@ -8,9 +8,9 @@
 .email-row.expanded { background: #f8fafc; }
 
 /* AI notes callout */
-.ai-notes { border-left: 3px solid #3b82f6; background: #eff6ff; border-radius: 0 4px 4px 0; padding: 10px 12px; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start; }
-.ai-icon { width: 16px; height: 16px; color: #3b82f6; flex-shrink: 0; margin-top: 2px; }
-.ai-notes p { font-size: 13px; color: #1e3a5f; line-height: 1.5; }
+.ai-notes { border-left: 3px solid #4f46e5; background: #f5f3ff; border-radius: 0 4px 4px 0; padding: 10px 12px; margin-bottom: 14px; display: flex; gap: 8px; align-items: flex-start; }
+.ai-icon { width: 16px; height: 16px; color: #4f46e5; flex-shrink: 0; margin-top: 2px; }
+.ai-notes p { font-size: 13px; color: #3b1f8e; line-height: 1.5; }
 
 /* Email meta */
 .email-meta { display: flex; gap: 16px; font-size: 12px; color: #6b7280; margin-bottom: 8px; }
@@ -24,7 +24,7 @@
 
 /* Subtle full email link */
 .full-email-link { display: inline-block; margin-top: 8px; font-size: 12px; color: #6b7280; text-decoration: none; cursor: pointer; }
-.full-email-link:hover { color: #2563eb; text-decoration: underline; }
+.full-email-link:hover { color: #4f46e5; text-decoration: underline; }
 
 /* Chevron */
 .chevron { width: 16px; height: 16px; color: #9ca3af; transition: transform 0.15s; flex-shrink: 0; position: relative; top: 2px; }

@@ -137,6 +137,44 @@ class TestRepDetailPage:
         resp = await client.get("/reps/nobody@example.com")
         assert resp.status_code == 404
 
+    async def test_rep_detail_ai_notes_rendered(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e = await make_email(
+            from_email="alice@example.com", subject="Test email",
+            body_text="Email body here\n--\nSignature",
+        )
+        await make_score(email_id=e.id, overall=8, notes="Good personalisation")
+        resp = await client.get("/reps/alice@example.com")
+        assert resp.status_code == 200
+        assert "ai-notes" in resp.text
+        assert "Good personalisation" in resp.text
+
+    async def test_rep_detail_email_body_stripped_signature(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e = await make_email(
+            from_email="alice@example.com", subject="Sig test",
+            body_text="Main body content\n--\nSignature block here",
+        )
+        await make_score(email_id=e.id, overall=7)
+        resp = await client.get("/reps/alice@example.com")
+        assert "Main body content" in resp.text
+
+    async def test_rep_detail_full_email_modal_link(
+        self, client, make_rep, make_email, make_score
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        e = await make_email(
+            from_email="alice@example.com", subject="Modal test",
+            body_text="Body with signature\n--\nSig",
+        )
+        await make_score(email_id=e.id, overall=7)
+        resp = await client.get("/reps/alice@example.com")
+        assert "View full email with signature" in resp.text
+
     async def test_get_rep_detail_accepts_prefixed_pagination_params(
         self, client, make_rep, make_email, make_score
     ):
