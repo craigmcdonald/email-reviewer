@@ -54,13 +54,11 @@
 .detail-body-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
 .detail-body-text { font-size: 14px; color: #374151; white-space: pre-wrap; font-family: inherit; line-height: 1.65; margin: 0; }
 
-/* Inline score badges for thread emails */
-.score-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.score-badge-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
-.score-badge-pill.badge-high { background: #dcfce7; color: #16a34a; }
-.score-badge-pill.badge-mid { background: #fef9c3; color: #ca8a04; }
-.score-badge-pill.badge-low { background: #fee2e2; color: #dc2626; }
-.score-badge-pill .badge-label { font-weight: 700; }
+/* Inline score grid for thread emails — matches table layout on rep/chain detail pages */
+.score-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin-top: 10px; border-top: 1px solid #f0f1f3; border-bottom: 1px solid #f0f1f3; }
+.score-grid-cell { padding: 8px 4px; text-align: center; }
+.score-grid-label { font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 2px; }
+.score-grid-value { font-size: 18px; font-weight: 700; }
 .detail-full-link { display: inline-block; margin-top: 12px; font-size: 13px; color: #6b7280; cursor: pointer; text-decoration: none; }
 .detail-full-link:hover { color: #4f46e5; text-decoration: underline; }
 
@@ -117,7 +115,6 @@
 .dir-sent { background: #eef2ff; color: #4f46e5; }
 .dir-received { background: #f3f4f6; color: #6b7280; }
 .thread-time { font-size: 11px; color: #9ca3af; }
-.thread-score { font-size: 12px; font-weight: 700; }
 .thread-body-scroll { max-height: 120px; overflow-y: auto; margin-top: 10px; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
 .thread-body { font-size: 12px; color: #4b5563; white-space: pre-wrap; font-family: inherit; line-height: 1.5; }
 .thread-ai-notes { margin-top: 12px; border-left: 2px solid #4f46e5; padding: 10px 12px; font-size: 12px; color: #3b1f8e; line-height: 1.5; background: #f9f8fe; border-radius: 0 4px 4px 0; }
@@ -493,11 +490,13 @@ function scoreTileHtml(dims) {
     return html;
 }
 
-function scoreBadgeHtml(label, val) {
-    if (val == null || val === '') return '';
-    var n = parseFloat(val);
-    var cls = n >= 7 ? 'badge-high' : n >= 4 ? 'badge-mid' : 'badge-low';
-    return '<span class="score-badge-pill ' + cls + '"><span class="badge-label">' + label + '</span> ' + val + '</span>';
+function scoreGridCellHtml(label, val) {
+    var cls = '';
+    if (val != null && val !== '') {
+        var n = parseFloat(val);
+        if (!isNaN(n)) cls = n >= 7 ? 'score-high' : n >= 4 ? 'score-mid' : 'score-low';
+    }
+    return '<div class="score-grid-cell"><div class="score-grid-label">' + label + '</div><div class="score-grid-value ' + cls + '">' + (val != null && val !== '' ? val : '\u2014') + '</div></div>';
 }
 
 function showDetailPanel(el) {
@@ -522,7 +521,7 @@ function showDetailPanel(el) {
         var tiles = document.getElementById('detail-score-tiles');
         tiles.innerHTML = scoreTileHtml([
             {label: 'Overall', val: el.dataset.score},
-            {label: 'Personalisation', val: el.dataset.scorePersonalisation},
+            {label: 'Pers.', val: el.dataset.scorePersonalisation},
             {label: 'Clarity', val: el.dataset.scoreClarity},
             {label: 'Value Prop', val: el.dataset.scoreValueProposition},
             {label: 'CTA', val: el.dataset.scoreCta}
@@ -601,21 +600,16 @@ function loadDetailThread(chainId) {
                 html += '<span class="thread-from">' + escapeHtml(e.from_name || e.from_email) + '</span>';
                 html += '<span class="thread-direction ' + (isOut ? 'dir-sent' : 'dir-received') + '">' + (isOut ? 'Sent' : 'Received') + '</span>';
                 html += '</div><div style="display:flex;align-items:center;gap:8px">';
-                if (e.score && e.score.overall != null) {
-                    var sc = e.score.overall;
-                    var scCls = sc >= 7 ? 'score-high' : sc >= 4 ? 'score-mid' : 'score-low';
-                    html += '<span class="thread-score ' + scCls + '">' + sc + '</span>';
-                }
                 if (e.timestamp) html += '<span class="thread-time">' + e.timestamp.substring(5, 10) + ' ' + e.timestamp.substring(11, 16) + '</span>';
                 html += '</div></div>';
-                // Score dimension badges for outgoing emails
+                // Score grid for outgoing emails
                 if (isOut && e.score) {
-                    html += '<div class="score-badges">';
-                    html += scoreBadgeHtml('Overall', e.score.overall);
-                    html += scoreBadgeHtml('Personalisation', e.score.personalisation);
-                    html += scoreBadgeHtml('Clarity', e.score.clarity);
-                    html += scoreBadgeHtml('Value Prop', e.score.value_proposition);
-                    html += scoreBadgeHtml('CTA', e.score.cta);
+                    html += '<div class="score-grid">';
+                    html += scoreGridCellHtml('Overall', e.score.overall);
+                    html += scoreGridCellHtml('Pers.', e.score.personalisation);
+                    html += scoreGridCellHtml('Clarity', e.score.clarity);
+                    html += scoreGridCellHtml('Value Prop', e.score.value_proposition);
+                    html += scoreGridCellHtml('CTA', e.score.cta);
                     html += '</div>';
                 }
                 if (isOut && e.score && e.score.notes) html += '<div class="thread-ai-notes">' + escapeHtml(e.score.notes) + '</div>';
@@ -637,12 +631,6 @@ function loadThread(chainId) {
             var container = document.getElementById('thread-' + chainId);
             if (!container || !data.emails) return;
             var html = '';
-            var scoreClassFn = function(v) {
-                if (v == null) return '';
-                if (v >= 7) return 'score-high';
-                if (v >= 4) return 'score-mid';
-                return 'score-low';
-            };
             for (var i = 0; i < data.emails.length; i++) {
                 var e = data.emails[i];
                 var isOut = e.direction === 'EMAIL';
@@ -653,21 +641,18 @@ function loadThread(chainId) {
                 html += '<span class="thread-from">' + (e.from_name || e.from_email) + '</span>';
                 html += '<span class="thread-direction ' + (isOut ? 'dir-sent' : 'dir-received') + '">' + (isOut ? 'Sent' : 'Received') + '</span>';
                 html += '</div><div style="display:flex;align-items:center;gap:8px">';
-                if (e.score && e.score.overall != null) {
-                    html += '<span class="thread-score ' + scoreClassFn(e.score.overall) + '">' + e.score.overall + '</span>';
-                }
                 if (e.timestamp) {
                     html += '<span class="thread-time">' + e.timestamp.substring(5, 10) + ' ' + e.timestamp.substring(11, 16) + '</span>';
                 }
                 html += '</div></div>';
-                // Score dimension badges for outgoing emails
+                // Score grid for outgoing emails
                 if (isOut && e.score) {
-                    html += '<div class="score-badges">';
-                    html += scoreBadgeHtml('Overall', e.score.overall);
-                    html += scoreBadgeHtml('Personalisation', e.score.personalisation);
-                    html += scoreBadgeHtml('Clarity', e.score.clarity);
-                    html += scoreBadgeHtml('Value Prop', e.score.value_proposition);
-                    html += scoreBadgeHtml('CTA', e.score.cta);
+                    html += '<div class="score-grid">';
+                    html += scoreGridCellHtml('Overall', e.score.overall);
+                    html += scoreGridCellHtml('Pers.', e.score.personalisation);
+                    html += scoreGridCellHtml('Clarity', e.score.clarity);
+                    html += scoreGridCellHtml('Value Prop', e.score.value_proposition);
+                    html += scoreGridCellHtml('CTA', e.score.cta);
                     html += '</div>';
                 }
                 if (isOut && e.score && e.score.notes) {
