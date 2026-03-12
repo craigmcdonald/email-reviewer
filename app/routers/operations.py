@@ -180,6 +180,8 @@ async def start_export(
     session: AsyncSession = Depends(get_db),
 ):
     queue = _validate_queue()
+    await _reap_stale_jobs(session)
+    await _check_no_running(session, [JobType.EXPORT])
     job = await _create_job(session, JobType.EXPORT)
     await session.commit()
 

@@ -232,7 +232,7 @@ async def run_score_job(
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_completed(job, summary)
-            await s.flush()
+            await s.commit()
 
         except Exception as exc:
             await _fail_job(s, job_id, exc)
@@ -268,7 +268,7 @@ async def run_rescore_job(
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_completed(job, summary)
-            await s.flush()
+            await s.commit()
 
         except Exception as exc:
             await _fail_job(s, job_id, exc)
@@ -277,7 +277,7 @@ async def run_rescore_job(
 async def run_export_job(
     session: Optional[AsyncSession],
     job_id: int,
-    output_path: str = "export.xlsx",
+    output_path: str | None = None,
 ) -> None:
     async with _session_scope(session) as s:
         try:
@@ -286,11 +286,12 @@ async def run_export_job(
             _set_running(job)
             await s.commit()
 
-            path = await export_to_excel(s, output_path)
+            effective_path = output_path or f"export_{job_id}.xlsx"
+            path = await export_to_excel(s, effective_path)
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_completed(job, {"output_path": path})
-            await s.flush()
+            await s.commit()
 
         except Exception as exc:
             await _fail_job(s, job_id, exc)
@@ -337,7 +338,7 @@ async def run_chain_build_job(
             result = await s.execute(select(Job).where(Job.job_id == job_id))
             job = result.scalar_one()
             _set_completed(job, summary)
-            await s.flush()
+            await s.commit()
 
         except Exception as exc:
             await _fail_job(s, job_id, exc)

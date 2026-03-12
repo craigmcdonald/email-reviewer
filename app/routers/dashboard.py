@@ -98,7 +98,10 @@ def _parse_date(value: str | None) -> date | None:
 def _parse_int(value: str | None) -> int | None:
     if not value:
         return None
-    return int(value)
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def _section_params(params, prefix: str) -> dict:

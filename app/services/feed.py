@@ -238,30 +238,7 @@ def _conversation_select(*, search, rep_email, date_from, date_to, score_min, sc
         score_min=score_min, score_max=score_max,
     )
 
-    return (
-        select(
-            literal("conversation").label("type"),
-            EmailChain.id.label("item_id"),
-            EmailChain.normalized_subject.label("subject"),
-            first_outgoing.c.from_name.label("from_name"),
-            first_outgoing.c.from_email.label("from_email"),
-            literal(None).label("to_name"),
-            literal(None).label("to_email"),
-            literal(None).label("body_text"),
-            EmailChain.last_activity_at.label("sort_date"),
-            chain_latest_score.c.overall.label("score"),
-            chain_latest_score.c.notes.label("score_notes"),
-            literal(None).label("score_personalisation"),
-            literal(None).label("score_clarity"),
-            literal(None).label("score_value_proposition"),
-            literal(None).label("score_cta"),
-            EmailChain.email_count.label("email_count"),
-            EmailChain.is_unanswered.label("is_unanswered"),
-            EmailChain.participants.label("participants"),
-        )
-        .outerjoin(chain_latest_score, chain_latest_score.c.chain_id == EmailChain.id)
-        .outerjoin(first_outgoing, first_outgoing.c.chain_id == EmailChain.id)
-        .where(*filters) if filters else
+    stmt = (
         select(
             literal("conversation").label("type"),
             EmailChain.id.label("item_id"),
@@ -285,6 +262,9 @@ def _conversation_select(*, search, rep_email, date_from, date_to, score_min, sc
         .outerjoin(chain_latest_score, chain_latest_score.c.chain_id == EmailChain.id)
         .outerjoin(first_outgoing, first_outgoing.c.chain_id == EmailChain.id)
     )
+    if filters:
+        stmt = stmt.where(*filters)
+    return stmt
 
 
 def _build_union_query(*, search, rep_email, date_from, date_to, score_min, score_max):
