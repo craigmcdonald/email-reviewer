@@ -662,27 +662,16 @@ class TestFeedRoute:
         settings_pos = nav_html.index("Settings")
         assert inbox_pos < team_pos < settings_pos
 
-    async def test_feed_page_no_unanswered_dots(
+    async def test_feed_page_thread_node_dots_hidden(
         self, client, make_rep, make_email, make_score, make_chain
     ):
+        """Thread node dots (node-outgoing/node-incoming) should be transparent."""
         await make_rep(email="rep@co.com", display_name="Rep", rep_type="SDR")
-        chain = await make_chain(
-            normalized_subject="Unanswered Thread",
-            last_activity_at=_ts(1),
-            is_unanswered=True,
-            email_count=1,
-        )
-        e = await make_email(
-            from_email="rep@co.com",
-            direction=EmailDirection.EMAIL.value,
-            timestamp=_ts(1),
-            chain_id=chain.id,
-        )
-        await make_score(email_id=e.id, overall=5, scored_at=_ts(1))
 
         resp = await client.get("/feed")
         assert resp.status_code == 200
-        assert "unanswered-dot" not in resp.text
+        assert "node-outgoing { background: transparent; }" in resp.text
+        assert "node-incoming { background: transparent; }" in resp.text
 
 
 class TestFeedNavigation:

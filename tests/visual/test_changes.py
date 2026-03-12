@@ -2,7 +2,7 @@
 
 Validates:
 1. Nav shows "Inbox" (not "Feed") in position 1, then Team, then Settings
-2. No unanswered dots in the feed sidebar
+2. Thread node dots (node-outgoing/node-incoming) are hidden
 3. Emails on /chains pages are in reverse chronological order (newest first)
 4. Emails on /reps pages are in reverse chronological order
 5. Inbox/feed page sidebar shows items in reverse chronological order
@@ -308,17 +308,22 @@ def run_tests(driver, chain_bf_id, chain_u_id):
     else:
         print("  Team link active on /: correct")
 
-    # ===== 2. NO UNANSWERED DOTS IN FEED SIDEBAR =====
-    print("\n=== Feed: No unanswered dots ===")
+    # ===== 2. THREAD NODE DOTS HIDDEN =====
+    print("\n=== Feed: Thread node dots hidden ===")
     driver.get(f"{BASE}/feed")
     time.sleep(1)
-    screenshot(driver, "02_feed_no_dots", full_page=False)
+    screenshot(driver, "02_feed_no_node_dots", full_page=False)
 
-    dots = driver.find_elements(By.CSS_SELECTOR, ".unanswered-dot")
-    if dots:
-        issues.append(f"Feed sidebar: found {len(dots)} unanswered-dot elements (should be 0)")
-    else:
-        print("  No unanswered dots found: correct")
+    # Verify node-outgoing and node-incoming use transparent background
+    page_source = driver.page_source
+    if "node-outgoing { background: #4f46e5; }" in page_source:
+        issues.append("Feed: node-outgoing still has colored background (should be transparent)")
+    elif "node-outgoing { background: transparent; }" in page_source:
+        print("  node-outgoing is transparent: correct")
+    if "node-incoming { background: #9ca3af; }" in page_source:
+        issues.append("Feed: node-incoming still has colored background (should be transparent)")
+    elif "node-incoming { background: transparent; }" in page_source:
+        print("  node-incoming is transparent: correct")
 
     # Verify conversations still show up
     conv_items = driver.find_elements(By.CSS_SELECTOR, ".feed-item[data-type='conversation']")
