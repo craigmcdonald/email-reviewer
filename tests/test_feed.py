@@ -708,9 +708,11 @@ class TestFeedMasterDetail:
         resp = await client.get("/feed")
         assert "feed-split" in resp.text
 
-    async def test_detail_panel_width_at_least_520(self, client):
+    async def test_detail_panel_is_dominant_column(self, client):
         resp = await client.get("/feed")
-        assert "width: 520px" in resp.text
+        # List takes 44%, detail panel takes remaining ~56%
+        assert "flex: 0 0 44%" in resp.text
+        assert "detail-header-meta" in resp.text
 
     async def test_standalone_email_has_score_tiles_data(
         self, client, make_rep, make_email, make_score

@@ -31,26 +31,28 @@
 .feed-filter-secondary select { border: 1px solid #dde0e4; border-radius: 8px; padding: 5px 8px; font-size: 13px; background: #fff; color: #1a1a2e; outline: none; }
 .feed-filter-dash { color: #9ca3af; font-size: 12px; }
 
-/* Split layout */
-.feed-split { display: flex; gap: 20px; align-items: stretch; flex: 1; min-height: 0; }
-.feed-list-col { flex: 1; min-width: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
-.feed-detail-panel { width: 520px; flex-shrink: 0; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); overflow: hidden; display: none; }
-@media (min-width: 1101px) { .feed-detail-panel { display: flex; flex-direction: column; } .expand-panel, .thread-panel { display: none !important; } .feed-item.expanded > .feed-row { background: #eef2ff; border-left: 3px solid #4f46e5; } }
-@media (max-width: 1100px) { .feed-split { display: block; } .feed-container { height: auto; } }
+/* Split layout — detail panel is the primary reading area (55%), list is navigation (45%) */
+.feed-split { display: flex; gap: 24px; align-items: stretch; flex: 1; min-height: 0; }
+.feed-list-col { flex: 0 0 44%; min-width: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
+.feed-detail-panel { flex: 1; min-width: 0; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); overflow: hidden; display: none; }
+@media (min-width: 1101px) { .feed-detail-panel { display: flex; flex-direction: column; } .expand-panel, .thread-panel { display: none !important; } .feed-item.expanded > .feed-row { background: #eef2ff; border-left: 3px solid #4f46e5; } .feed-preview { display: none; } }
+@media (max-width: 1100px) { .feed-split { display: block; } .feed-container { height: auto; } .feed-list-col { flex: 1; } }
 
 /* Detail panel inner */
-.detail-header { padding: 14px 16px; border-bottom: 1px solid #f0f1f3; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-.detail-header-title { font-size: 14px; font-weight: 600; color: #1a1a2e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.detail-placeholder { padding: 48px 16px; text-align: center; color: #9ca3af; font-size: 13px; }
+.detail-header { padding: 24px 28px 20px; flex-shrink: 0; }
+.detail-header-title { font-size: 20px; font-weight: 700; color: #1a1a2e; line-height: 1.3; white-space: normal; }
+.detail-header-meta { font-size: 13px; color: #6b7280; margin-top: 4px; }
+.detail-placeholder { padding: 48px 28px; text-align: center; color: #9ca3af; font-size: 14px; }
 .detail-content { display: none; overflow-y: auto; flex: 1; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
-.score-tiles { display: flex; gap: 0; padding: 0; border-bottom: 1px solid #f0f1f3; }
-.score-tile { flex: 1; padding: 12px 4px; text-align: center; }
-.score-tile-label { font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
-.score-tile-value { font-size: 22px; font-weight: 700; }
-.detail-section { padding: 0 16px 14px; }
-.detail-section-title { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
-.detail-body-scroll { max-height: 200px; overflow-y: auto; border: 1px solid #eef0f3; border-radius: 6px; padding: 10px; background: #fff; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
-.detail-body-text { font-size: 13px; color: #4b5563; white-space: pre-wrap; font-family: inherit; line-height: 1.55; margin: 0; }
+.score-tiles { display: flex; gap: 0; padding: 0; border-top: 1px solid #f0f1f3; border-bottom: 1px solid #f0f1f3; }
+.score-tile { flex: 1; padding: 16px 8px; text-align: center; }
+.score-tile-label { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.score-tile-value { font-size: 28px; font-weight: 700; }
+.detail-section { padding: 0 28px 20px; }
+.detail-section:first-of-type { padding-top: 20px; }
+.detail-section-title { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.detail-body-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
+.detail-body-text { font-size: 14px; color: #374151; white-space: pre-wrap; font-family: inherit; line-height: 1.65; margin: 0; }
 
 /* Inline score badges for thread emails */
 .score-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
@@ -59,7 +61,7 @@
 .score-badge-pill.badge-mid { background: #fef9c3; color: #ca8a04; }
 .score-badge-pill.badge-low { background: #fee2e2; color: #dc2626; }
 .score-badge-pill .badge-label { font-weight: 700; }
-.detail-full-link { display: inline-block; margin-top: 6px; font-size: 12px; color: #6b7280; cursor: pointer; text-decoration: none; }
+.detail-full-link { display: inline-block; margin-top: 12px; font-size: 13px; color: #6b7280; cursor: pointer; text-decoration: none; }
 .detail-full-link:hover { color: #4f46e5; text-decoration: underline; }
 
 /* Feed items */
@@ -89,8 +91,8 @@
 /* Expanded: standalone */
 .expand-panel { display: none; padding: 16px 16px 16px 62px; }
 .feed-item.expanded .expand-panel { display: block; }
-.ai-notes { border-left: 3px solid #4f46e5; background: #f5f3ff; border-radius: 0 6px 6px 0; padding: 10px 12px; margin-bottom: 12px; display: flex; gap: 8px; align-items: flex-start; }
-.ai-icon { width: 14px; height: 14px; color: #4f46e5; flex-shrink: 0; margin-top: 2px; }
+.ai-notes { border-left: 3px solid #4f46e5; background: #f5f3ff; border-radius: 0 6px 6px 0; padding: 14px 16px; margin-bottom: 16px; display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.55; color: #1e1b4b; }
+.ai-icon { width: 16px; height: 16px; color: #4f46e5; flex-shrink: 0; margin-top: 2px; }
 .email-body-scroll { max-height: 180px; overflow-y: auto; border: 1px solid #eef0f3; border-radius: 6px; padding: 12px; background: #fff; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
 .email-body-text { font-size: 13px; color: #4b5563; white-space: pre-wrap; font-family: inherit; line-height: 1.55; margin: 0; }
 .full-email-link { display: inline-block; margin-top: 8px; font-size: 12px; color: #6b7280; text-decoration: none; cursor: pointer; }
@@ -380,7 +382,8 @@
     {# ── Detail panel (desktop only, populated via JS) ── #}
     <div class="feed-detail-panel" id="feed-detail-panel">
         <div class="detail-header">
-            <span class="detail-header-title" id="detail-title">Details</span>
+            <div class="detail-header-title" id="detail-title">Details</div>
+            <div class="detail-header-meta" id="detail-meta"></div>
         </div>
         <div class="detail-placeholder" id="detail-placeholder">
             Click an item to view details
@@ -388,14 +391,12 @@
         <div class="detail-content" id="detail-content">
             <div class="score-tiles" id="detail-score-tiles"></div>
             <div class="detail-section" id="detail-notes-section" style="display:none">
-                <div class="detail-section-title">AI Notes</div>
                 <div class="ai-notes" id="detail-notes-box">
                     <svg class="ai-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
                     <p id="detail-notes-text"></p>
                 </div>
             </div>
             <div class="detail-section" id="detail-body-section">
-                <div class="detail-section-title">Email Body</div>
                 <div class="detail-body-scroll">
                     <pre class="detail-body-text" id="detail-body-text"></pre>
                 </div>
@@ -504,11 +505,18 @@ function showDetailPanel(el) {
     var content = document.getElementById('detail-content');
     var title = document.getElementById('detail-title');
 
+    var meta = document.getElementById('detail-meta');
     placeholder.style.display = 'none';
     content.style.display = 'block';
 
     if (el.dataset.type === 'email') {
         title.textContent = el.dataset.subject || 'Email';
+        var metaParts = [];
+        if (el.dataset.from) metaParts.push(el.dataset.from);
+        if (el.dataset.to) metaParts.push('\u2192 ' + el.dataset.to);
+        if (el.dataset.time) metaParts.push(el.dataset.time);
+        meta.textContent = metaParts.join('  ');
+        meta.style.display = 'block';
 
         // Score tiles - horizontal row
         var tiles = document.getElementById('detail-score-tiles');
@@ -542,6 +550,8 @@ function showDetailPanel(el) {
         document.getElementById('detail-thread-section').style.display = 'none';
     } else if (el.dataset.type === 'conversation') {
         title.textContent = el.querySelector('.feed-subject') ? el.querySelector('.feed-subject').textContent : 'Conversation';
+        meta.textContent = '';
+        meta.style.display = 'none';
 
         // Conversation scores loaded via API
         var tiles = document.getElementById('detail-score-tiles');
