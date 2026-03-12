@@ -710,8 +710,8 @@ class TestFeedMasterDetail:
 
     async def test_detail_panel_is_dominant_column(self, client):
         resp = await client.get("/feed")
-        # List takes 44%, detail panel takes remaining ~56%
-        assert "flex: 0 0 44%" in resp.text
+        # List takes 35%, detail panel takes remaining ~65%
+        assert "flex: 0 0 35%" in resp.text
         assert "detail-header-meta" in resp.text
 
     async def test_standalone_email_has_score_tiles_data(
@@ -759,6 +759,30 @@ class TestFeedMasterDetail:
 
         resp = await client.get("/feed")
         assert "data-chain-id" in resp.text
+
+
+class TestFeedScoreLabels:
+    async def test_detail_panel_score_tiles_use_full_labels(self, client):
+        resp = await client.get("/feed")
+        assert resp.status_code == 200
+        assert "label: 'Personalisation'" in resp.text
+        assert "label: 'Clarity'" in resp.text
+        assert "label: 'Value Prop'" in resp.text
+        assert "label: 'CTA'" in resp.text
+
+    async def test_thread_score_badges_use_full_labels(self, client):
+        resp = await client.get("/feed")
+        assert resp.status_code == 200
+        assert "scoreBadgeHtml('Personalisation'" in resp.text
+        assert "scoreBadgeHtml('Clarity'" in resp.text
+        assert "scoreBadgeHtml('Value Prop'" in resp.text
+        assert "scoreBadgeHtml('CTA'" in resp.text
+
+    async def test_thread_score_badges_include_overall(self, client):
+        """Overall score should appear with the dimension badges, not isolated in the header."""
+        resp = await client.get("/feed")
+        assert resp.status_code == 200
+        assert "scoreBadgeHtml('Overall'" in resp.text
 
 
 class TestFeedThreadDetail:
