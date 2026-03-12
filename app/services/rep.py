@@ -401,6 +401,8 @@ async def get_rep_emails(
     if score_max is not None:
         filters.append(Score.overall <= score_max)
 
+    filters.append(Score.score_error.is_(False))
+
     count_stmt = (
         select(func.count(Email.id))
         .join(Score, Score.email_id == Email.id)
@@ -468,9 +470,9 @@ async def get_email_detail(session: AsyncSession, email_id: int):
 async def get_stats(session: AsyncSession):
     """Summary counts and averages."""
     total_emails_stmt = select(func.count(Email.id))
-    total_scored_stmt = select(func.count(Score.id))
+    total_scored_stmt = select(func.count(Score.id)).where(Score.score_error.is_(False))
     total_reps_stmt = select(func.count(Rep.email))
-    avg_overall_stmt = select(func.avg(Score.overall))
+    avg_overall_stmt = select(func.avg(Score.overall)).where(Score.score_error.is_(False))
 
     total_emails = (await session.execute(total_emails_stmt)).scalar() or 0
     total_scored = (await session.execute(total_scored_stmt)).scalar() or 0

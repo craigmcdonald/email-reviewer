@@ -109,3 +109,33 @@ class TestGetRepChains:
         data = resp.json()
         assert data["items"] == []
         assert data["total"] == 0
+
+    async def test_excludes_chains_with_score_error(
+        self, db, make_chain, make_email, make_chain_score
+    ):
+        """Chains with score_error=True on their ChainScore should be excluded
+        from the score-filtered view."""
+        from app.services.chain import get_rep_chains
+
+        chain_good = await make_chain(
+            normalized_subject="Good chain", email_count=2,
+        )
+        await make_email(
+            from_email="rep@example.com", subject="Good chain",
+            chain_id=chain_good.id, position_in_chain=1,
+        )
+        await make_chain_score(chain_id=chain_good.id, conversation_quality=8)
+
+        chain_err = await make_chain(
+            normalized_subject="Error chain", email_count=2,
+        )
+        await make_email(
+            from_email="rep@example.com", subject="Error chain",
+            chain_id=chain_err.id, position_in_chain=1,
+        )
+        await make_chain_score(chain_id=chain_err.id, score_error=True, conversation_quality=None)
+
+        result = await get_rep_chains(db, "rep@example.com", score_min=1)
+        subjects = [item["normalized_subject"] for item in result["items"]]
+        assert "Good chain" in subjects
+        assert "Error chain" not in subjects

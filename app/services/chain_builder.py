@@ -224,6 +224,7 @@ async def rebuild_all_chains(session: AsyncSession) -> dict:
     for group_emails in chain_groups.values():
         group_emails.sort(key=lambda e: (e.timestamp or datetime.min, e.id))
 
+        non_auto_reply = [e for e in group_emails if not e.is_auto_reply]
         all_participants: set[str] = set()
         outgoing = 0
         incoming = 0
@@ -250,13 +251,14 @@ async def rebuild_all_chains(session: AsyncSession) -> dict:
             for e in group_emails
         )
 
-        first_email = group_emails[0]
+        first_email = non_auto_reply[0] if non_auto_reply else group_emails[0]
+        last_email = non_auto_reply[-1] if non_auto_reply else group_emails[-1]
         chain = EmailChain(
             normalized_subject=normalize_subject(first_email.subject),
             participants=",".join(sorted(all_participants)),
-            started_at=group_emails[0].timestamp,
-            last_activity_at=group_emails[-1].timestamp,
-            email_count=len(group_emails),
+            started_at=first_email.timestamp,
+            last_activity_at=last_email.timestamp,
+            email_count=len(non_auto_reply),
             outgoing_count=outgoing,
             incoming_count=incoming,
             is_unanswered=not has_outgoing_after_incoming,
@@ -369,9 +371,14 @@ async def rebuild_all_chains(session: AsyncSession) -> dict:
 
 
 def _compute_chain_metadata(group_emails: list[Email]) -> dict | None:
-    """Compute chain metadata from a list of emails. Returns None if no chain should be created."""
+    """Compute chain metadata from a list of emails. Returns None if no chain should be created.
+
+    Auto-reply emails are excluded from email_count since they are unlinked
+    from the chain after creation.
+    """
     group_emails.sort(key=lambda e: (e.timestamp or datetime.min, e.id))
 
+    non_auto_reply = [e for e in group_emails if not e.is_auto_reply]
     all_participants: set[str] = set()
     outgoing = 0
     incoming = 0
@@ -395,13 +402,14 @@ def _compute_chain_metadata(group_emails: list[Email]) -> dict | None:
         for e in group_emails
     )
 
-    first_email = group_emails[0]
+    first_email = non_auto_reply[0] if non_auto_reply else group_emails[0]
+    last_email = non_auto_reply[-1] if non_auto_reply else group_emails[-1]
     return {
         "normalized_subject": normalize_subject(first_email.subject),
         "participants": ",".join(sorted(all_participants)),
-        "started_at": group_emails[0].timestamp,
-        "last_activity_at": group_emails[-1].timestamp,
-        "email_count": len(group_emails),
+        "started_at": first_email.timestamp,
+        "last_activity_at": last_email.timestamp,
+        "email_count": len(non_auto_reply),
         "outgoing_count": outgoing,
         "incoming_count": incoming,
         "is_unanswered": not has_outgoing_after_incoming,
