@@ -93,6 +93,70 @@ class TestGetFeedStandaloneEmails:
         assert len(standalone_items) == 0
 
 
+class TestGetFeedScoreErrorExclusion:
+    async def test_standalone_email_with_score_error_excluded(
+        self, db, make_rep, make_email, make_score
+    ):
+        from app.services.feed import get_feed
+
+        await make_rep(email="rep@co.com", display_name="Rep One", rep_type="SDR")
+        e_good = await make_email(
+            from_email="rep@co.com",
+            subject="Good Score",
+            direction=EmailDirection.EMAIL.value,
+            timestamp=_ts(2),
+            hubspot_id="good_1",
+        )
+        await make_score(email_id=e_good.id, overall=7, scored_at=_ts(2))
+        e_error = await make_email(
+            from_email="rep@co.com",
+            subject="Error Score",
+            direction=EmailDirection.EMAIL.value,
+            timestamp=_ts(1),
+            hubspot_id="error_1",
+        )
+        await make_score(email_id=e_error.id, score_error=True, scored_at=_ts(1))
+
+        result = await get_feed(db)
+        assert result["total"] == 1
+        assert result["items"][0]["subject"] == "Good Score"
+
+    async def test_chain_latest_score_skips_errored_scores(
+        self, db, make_rep, make_email, make_score, make_chain
+    ):
+        from app.services.feed import get_feed
+
+        await make_rep(email="rep@co.com", display_name="Rep One", rep_type="SDR")
+        chain = await make_chain(
+            normalized_subject="Thread with Error",
+            last_activity_at=_ts(1),
+            email_count=2,
+        )
+        e1 = await make_email(
+            from_email="rep@co.com",
+            direction=EmailDirection.EMAIL.value,
+            timestamp=_ts(5),
+            chain_id=chain.id,
+            position_in_chain=1,
+        )
+        await make_score(email_id=e1.id, overall=6, scored_at=_ts(5))
+        e2 = await make_email(
+            from_email="rep@co.com",
+            direction=EmailDirection.EMAIL.value,
+            timestamp=_ts(1),
+            chain_id=chain.id,
+            position_in_chain=2,
+        )
+        # Latest scored email has score_error=True — should be skipped
+        await make_score(email_id=e2.id, score_error=True, scored_at=_ts(1))
+
+        result = await get_feed(db)
+        convos = [i for i in result["items"] if i["type"] == "conversation"]
+        assert len(convos) == 1
+        # Should fall back to the non-error score (overall=6), not the error
+        assert convos[0]["score"] == 6
+
+
 class TestGetFeedConversations:
     async def test_chain_appears_as_conversation(
         self, db, make_rep, make_email, make_score, make_chain

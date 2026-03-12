@@ -1,3 +1,4 @@
+import contextvars
 import os
 from datetime import datetime, timezone
 
@@ -9,11 +10,19 @@ class Base(DeclarativeBase):
     pass
 
 
+_current_user_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "current_user",
+    default=os.getenv("CURRENT_USER", "system"),
+)
+
+
+def set_current_user(user: str) -> contextvars.Token:
+    """Set the current user for audit trail. Returns a token for resetting."""
+    return _current_user_var.set(user)
+
+
 def _get_current_user() -> str:
-    auth_enabled = os.getenv("AUTH_ENABLED", "FALSE").upper() == "TRUE"
-    if not auth_enabled:
-        return os.getenv("CURRENT_USER", "system")
-    return "system"
+    return _current_user_var.get()
 
 
 def _utcnow() -> datetime:

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import json
@@ -47,9 +47,9 @@ class TestRunFetchJob:
         assert start_date == datetime.combine(date(2025, 6, 1), datetime.min.time())
 
     @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=0)
-    async def test_uses_max_fetched_at_when_later(self, mock_fetch, db, make_job, make_email, make_settings):
+    async def test_uses_max_timestamp_with_overlap_when_later(self, mock_fetch, db, make_job, make_email, make_settings):
         later = datetime(2025, 12, 1)
-        await make_email(fetched_at=later)
+        await make_email(timestamp=later)
         await make_settings(auto_score_after_fetch=False)
         job = await make_job(job_type=JobType.FETCH)
         await db.commit()
@@ -62,15 +62,15 @@ class TestRunFetchJob:
         start_date = call_kwargs.kwargs.get("start_date") or call_kwargs[1].get("start_date")
         if start_date is None:
             start_date = call_kwargs[0][3] if len(call_kwargs[0]) > 3 else None
-        assert start_date == later
+        assert start_date == later - timedelta(hours=1)
 
     @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=0)
-    async def test_uses_global_start_date_when_later_than_max_fetched_at(
+    async def test_uses_global_start_date_when_later_than_max_timestamp(
         self, mock_fetch, db, make_job, make_email, make_settings
     ):
-        # Email fetched_at is before global_start_date (date moved forward)
+        # Email timestamp is before global_start_date (date moved forward)
         old = datetime(2025, 1, 1)
-        await make_email(fetched_at=old)
+        await make_email(timestamp=old)
         await make_settings(
             global_start_date=date(2025, 10, 1), auto_score_after_fetch=False
         )
@@ -476,6 +476,39 @@ class TestRunRescoreJob:
         mock_score.assert_called_once()
 
 
+class TestRunRescoreBatchedDeletion:
+    @patch("app.services.job_runner.score_unscored_emails", new_callable=AsyncMock)
+    async def test_scores_are_deleted_before_rescoring(
+        self, mock_score, db, make_job, make_email, make_score
+    ):
+        """Scores should be deleted in batches and then score_unscored_emails called."""
+        mock_score.return_value = {
+            "scored": 3, "skipped": 0, "errors": 0,
+            "total_input_tokens": 0, "total_output_tokens": 0,
+        }
+        for i in range(3):
+            e = await make_email(from_email=f"rep{i}@test.com", hubspot_id=f"hs_{i}")
+            await make_score(email_id=e.id)
+
+        job = await make_job(job_type=JobType.RESCORE)
+        await db.commit()
+
+        # Verify scores exist before rescore
+        result = await db.execute(select(Score))
+        assert len(result.scalars().all()) == 3
+
+        from app.services.job_runner import run_rescore_job
+
+        await run_rescore_job(db, job.job_id)
+
+        # After rescore, all original scores should be deleted (mock doesn't create new ones)
+        result = await db.execute(select(Score))
+        assert len(result.scalars().all()) == 0
+
+        # score_unscored_emails should have been called to re-score
+        mock_score.assert_called_once()
+
+
 class TestRunScoreJobFailure:
     @patch("app.services.job_runner.score_unscored_emails", new_callable=AsyncMock)
     async def test_sets_failed_on_scorer_exception(self, mock_score, db, make_job):
@@ -759,20 +792,31 @@ class TestRunChainBuildJob:
 
 
 class TestRunFetchJobChainsBuilding:
-    @patch("app.services.job_runner.build_chains", new_callable=AsyncMock)
-    @patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, return_value=5)
-    async def test_fetch_invokes_chain_building(
-        self, mock_fetch, mock_build, db, make_job, make_settings
+    @patch("app.services.job_runner.update_chains_for_emails", new_callable=AsyncMock)
+    async def test_fetch_invokes_incremental_chain_building(
+        self, mock_update, db, make_job, make_settings, make_email
     ):
-        mock_build.return_value = {
+        mock_update.return_value = {
             "chains_created": 1, "chains_updated": 0, "emails_linked": 2,
         }
         await make_settings(auto_score_after_fetch=False)
         job = await make_job(job_type=JobType.FETCH)
         await db.commit()
 
-        from app.services.job_runner import run_fetch_job
+        # Create a side-effect for fetch_and_store that inserts an email,
+        # simulating the real fetch behavior of creating new DB rows
+        async def fake_fetch(session, **kwargs):
+            from app.models.email import Email as _Email
+            e = _Email(
+                subject="Fetched", from_email="a@b.com", direction="EMAIL",
+                timestamp=datetime(2025, 1, 1),
+            )
+            session.add(e)
+            await session.flush()
+            return 1
 
-        await run_fetch_job(db, job.job_id)
+        with patch("app.services.job_runner.fetch_and_store", new_callable=AsyncMock, side_effect=fake_fetch):
+            from app.services.job_runner import run_fetch_job
+            await run_fetch_job(db, job.job_id)
 
-        mock_build.assert_called_once()
+        mock_update.assert_called_once()

@@ -7,10 +7,10 @@ Email Reviewer fetches outgoing sales rep emails from HubSpot, scores each one u
 ## Data Pipeline
 
 ```
-HubSpot API -> Fetcher -> Classifier -> Thread Splitter -> Chain Builder -> Scorer -> Web UI
+HubSpot API -> Fetcher -> Classifier -> Chain Builder (incremental) -> Scorer -> Web UI
 ```
 
-The pipeline runs in discrete stages as background tasks triggered via the web UI or API. Each stage is idempotent: the fetcher upserts on HubSpot ID, the thread splitter skips already-split emails, and the scorer skips emails that already have a score row.
+The pipeline runs in discrete stages as background tasks triggered via the web UI or API. Each stage is idempotent: the fetcher upserts on HubSpot ID, the chain builder incrementally updates only affected chains, and the scorer skips emails that already have a score row. Thread splitting is a manual operation available via the CHAIN_BUILD job for backfill scenarios.
 
 ## Layered Architecture
 
@@ -161,7 +161,7 @@ All seven tables include audit columns (`created_at`, `updated_at`, `created_by`
 
 ## Audit Trail
 
-Every model inherits `AuditMixin` from `app/models/base.py`. ORM event listeners (`before_insert`, `before_update`) automatically set the audit columns. The current user is resolved from the `CURRENT_USER` environment variable when `AUTH_ENABLED` is false (local dev and test), or from the authenticated request context when enabled.
+Every model inherits `AuditMixin` from `app/models/base.py`. ORM event listeners (`before_insert`, `before_update`) automatically set the audit columns. The current user is resolved from a `contextvars.ContextVar` (`_current_user_var`), which defaults to `os.getenv("CURRENT_USER", "system")`. An HTTP middleware in `app/main.py` sets the context var for each request and resets it on exit, providing request-scoped audit identity. `set_current_user(user)` is the public API for overriding the audit user in non-HTTP contexts (e.g. tests, worker jobs).
 
 Routers never set audit fields directly.
 
@@ -250,7 +250,7 @@ The classifier processes emails where `direction` is `INCOMING_EMAIL` or `EMAIL`
 
 The entry point is `classify_emails(session, batch_size=10)`. It follows the same batch-commit pattern as the scorer: Phase 1 collects plain IDs (no ORM objects held across batches), Phase 2 processes pattern matches in committed batches, Phase 3 processes Haiku API calls in committed batches. Each batch re-queries fresh ORM objects by ID, commits on success, and rolls back on failure so completed batches survive crashes. Returns a summary dict with `total`, `classified`, `auto_replies_found`, `chains_extracted`, `errors`, and `batch_errors`.
 
-Classification runs automatically as part of every fetch job (between fetch and thread splitting). There is no standalone classify endpoint.
+Classification runs automatically as part of every fetch job (between fetch and chain building). There is no standalone classify endpoint.
 
 Auto-reply and non-sales emails are excluded from scoring and chain building. The chain builder ignores emails with `is_auto_reply=True` when counting incoming emails, determining unanswered status, and computing `last_activity_at`.
 
@@ -271,11 +271,30 @@ The entry point is `split_email_threads(session, batch_size=10)`, which:
 
 Returns a summary dict with `candidates`, `threads_split`, `messages_created`, `duplicates_skipped`, and `errors`.
 
-Thread splitting runs automatically as part of every fetch job (between classification and chain building).
+Thread splitting runs as part of the CHAIN_BUILD job (between classification and chain building). It is not included in the recurring fetch pipeline to avoid creating duplicate Email records in steady state.
 
 ## Chain Builder
 
-`app/services/chain_builder.py` groups emails into conversation chains. The entry point is `build_chains(session)`, which:
+`app/services/chain_builder.py` groups emails into conversation chains. Two entry points serve different use cases:
+
+### `update_chains_for_emails(session, email_ids)` — Incremental (fetch pipeline)
+
+Used by `run_fetch_job` after fetching new emails. Only processes the specified emails and their neighbors, preserving existing chains and their scores:
+
+1. Loads the new emails by ID.
+2. Finds "neighbor" emails that could group with the new ones: by `message_id`/`in_reply_to` cross-reference, by shared `thread_id`, or by normalized subject + participant overlap within a 30-day window.
+3. Loads all emails in any affected chains (chains that contain a neighbor email).
+4. Saves the original email→chain mapping before clearing chain assignments.
+5. Runs the 3-pass union-find algorithm on the affected set only.
+6. For each resulting group:
+   - **Maps to one existing chain**: updates the chain's metadata in place (email_count, last_activity_at, participants, is_unanswered). The ChainScore is untouched.
+   - **Maps to multiple existing chains** (new email bridges them): merges into the largest chain, deletes others, preserves the kept chain's score.
+   - **Maps to no existing chain**: creates a new EmailChain record.
+7. Returns a dict with `chains_created`, `chains_updated`, and `emails_linked` counts.
+
+### `rebuild_all_chains(session)` — Full rebuild (CHAIN_BUILD job)
+
+Used by `run_chain_build_job` for manual full rebuilds. Destructive: deletes all existing chains (cascade-deleting chain scores), then rebuilds from scratch. Chain scores are preserved by saving score data keyed by (normalized_subject, participants) before deletion and reattaching after creation, with a fallback to normalized_subject alone when participants change.
 
 1. Loads all emails ordered by timestamp.
 2. Runs three matching passes in priority order:
@@ -288,7 +307,7 @@ Thread splitting runs automatically as part of every fetch job (between classifi
    - **Chain** (at least one outgoing email after an incoming email): creates an `EmailChain` record with `is_unanswered=False`. Gets `chain_id`, `position_in_chain`, and will be chain-scored.
 4. Returns a dict with `chains_created`, `chains_updated`, and `emails_linked` counts.
 
-The service is idempotent - running it twice produces the same result. Existing chain assignments are cleared and rebuilt on each run.
+`build_chains(session)` is an alias for `rebuild_all_chains` for backward compatibility.
 
 `normalize_subject(subject)` is a pure function that recursively strips `Re:`, `RE:`, `Fwd:`, `FW:`, `Fw:`, and `Email: >>` prefixes and trims whitespace. Returns empty string for `None` input.
 
@@ -402,7 +421,7 @@ Shared `Jinja2Templates` instance with global functions: `static_url()` appends 
 
 Settings control the behaviour of fetch and score operations:
 
-- `global_start_date` — floor for all HubSpot fetches. The effective start date for a fetch is `max(global_start_date, max_fetched_at_in_db or global_start_date)`.
+- `global_start_date` — floor for all HubSpot fetches. The effective start date for a fetch is `max(Email.timestamp) - 1 hour` when existing emails are newer than `global_start_date`, otherwise `global_start_date`. The 1-hour overlap catches emails created between fetch cycles; the upsert on `hubspot_id` deduplicates safely.
 - `company_domains` — comma-separated list passed to `filter_relevant_emails`.
 - `scoring_batch_size` — concurrency limit for the Claude API semaphore.
 - `auto_score_after_fetch` — when true, a fetch operation automatically scores unscored emails on completion.
@@ -422,11 +441,11 @@ Validation lives in the `SettingsUpdate` Pydantic schema: `global_start_date` ca
 
 `app/tasks.py` provides synchronous wrapper functions (`fetch_task`, `score_task`, `rescore_task`, `export_task`) for RQ. Each calls `asyncio.run()` on the corresponding async runner with `session=None`, so the runner creates its own session.
 
-- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count, auto_score)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided), then runs five stages in sequence, each committing independently so completed work survives later failures: (1) `fetch_and_store` with company_domains and optional `end_date`/`max_count`, (2) `classify_emails` to classify incoming emails as auto-replies or real responses, (2.5) `split_email_threads` to extract individual messages from quoted reply chains, (3) `build_chains` to group emails into conversation chains, (4) `score_unscored_emails` when `auto_score` is true or when `auto_score` is None and the `auto_score_after_fetch` setting is true. Each stage is wrapped in try/except; if a stage fails, prior committed results are preserved and the error is recorded in `result_summary.stage_errors`. Result summary includes `fetched`, `new_reps`, `auto_replies`, `threads_split`, `messages_extracted`, and optionally `scored`, `errors`, `tokens`.
+- `run_fetch_job(session, job_id, *, fetch_start_date, fetch_end_date, max_count, auto_score)` — reads settings, computes effective start date (overridden when `fetch_start_date` is provided; otherwise `max(Email.timestamp) - 1 hour` or `global_start_date`), then runs four stages in sequence, each committing independently so completed work survives later failures: (1) `fetch_and_store` with company_domains and optional `end_date`/`max_count`, (2) `classify_emails` to classify incoming emails as auto-replies or real responses, (3) `update_chains_for_emails` to incrementally update conversation chains for newly fetched emails only (preserving existing chain scores), (4) `score_unscored_emails` when `auto_score` is true or when `auto_score` is None and the `auto_score_after_fetch` setting is true. Each stage is wrapped in try/except; if a stage fails, prior committed results are preserved and the error is recorded in `result_summary.stage_errors`. Result summary includes `fetched`, `new_reps`, `auto_replies`, and optionally `scored`, `errors`, `tokens`.
 - `run_score_job(session, job_id)` — reads `scoring_batch_size` from settings, calls `score_unscored_emails`. Result summary includes `scored`, `errors`, `tokens`.
-- `run_rescore_job(session, job_id)` — deletes all existing chain_scores and scores, then calls `score_unscored_emails` to score every email and chain. Result summary includes `scored`, `errors`, `tokens`, `chains_scored`, `chain_errors`.
+- `run_rescore_job(session, job_id)` — deletes all chain_scores, then deletes email scores in committed batches of 100 to bound crash exposure, then calls `score_unscored_emails` to re-score all emails and chains. If the process crashes, at most one batch of scores is lost rather than the entire corpus. Result summary includes `scored`, `errors`, `tokens`, `chains_scored`, `chain_errors`.
 - `run_export_job(session, job_id, output_path)` — generates Excel via `export_to_excel`, stores path in result summary.
-- `run_chain_build_job(session, job_id)` — three-stage pipeline: (1) `classify_emails` to populate `quoted_metadata` on unclassified emails, (2) `split_email_threads` to extract individual messages from quoted reply chains, (3) `build_chains` to group emails into conversation chains. Each stage is error-isolated so failures don't block subsequent stages. Result summary includes `classified`, `auto_replies`, `threads_split`, `messages_created`, `chains_created`, `chains_updated`, and `emails_linked`.
+- `run_chain_build_job(session, job_id)` — three-stage pipeline: (1) `classify_emails` to populate `quoted_metadata` on unclassified emails, (2) `split_email_threads` to extract individual messages from quoted reply chains, (3) `rebuild_all_chains` to destructively rebuild all conversation chains from scratch. Each stage is error-isolated so failures don't block subsequent stages. Result summary includes `classified`, `auto_replies`, `threads_split`, `messages_created`, `chains_created`, `chains_updated`, and `emails_linked`.
 
 No FULL_RUN job type. A FETCH job can handle both fetch and score phases. The `auto_score` request parameter controls scoring per-fetch; when omitted, the `auto_score_after_fetch` setting applies. Cron POSTs to `/api/operations/fetch` and the setting controls the default behaviour. The UI exposes a "Score after fetch" checkbox initialised from the setting, allowing per-fetch override.
 

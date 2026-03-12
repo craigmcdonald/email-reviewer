@@ -302,6 +302,39 @@ class TestSplitEmailThreads:
         assert "priyanka@nativecampusadvertising.com" in child_emails
 
     @patch("app.services.thread_splitter.AsyncAnthropic")
+    async def test_split_child_inherits_parent_timestamp(
+        self, mock_anthropic_cls, db, make_email, make_settings
+    ):
+        await make_settings(
+            thread_split_indicators=["From:"],
+            thread_splitter_prompt_blocks={"opening": "x", "messages": "y", "closing": "z"},
+        )
+        parent_ts = datetime(2026, 2, 24, 15, 0, 0)
+        parent = await make_email(
+            from_email="priyanka@nativecampusadvertising.com",
+            subject="Re: Partnership Opportunity",
+            body_text=THREAD_BODY,
+            quoted_metadata=[{"from_email": "mark@prospect.com"}],
+            direction="EMAIL",
+            is_thread_split=False,
+            timestamp=parent_ts,
+        )
+        await db.commit()
+
+        mock_client = AsyncMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.create.return_value = _mock_haiku_response(HAIKU_RESPONSE)
+
+        await split_email_threads(db)
+
+        children = (await db.execute(
+            select(Email).where(Email.split_from_id == parent.id)
+        )).scalars().all()
+        assert len(children) == 2
+        for child in children:
+            assert child.timestamp == parent_ts
+
+    @patch("app.services.thread_splitter.AsyncAnthropic")
     async def test_dedup_skips_existing_email(
         self, mock_anthropic_cls, db, make_email, make_settings
     ):

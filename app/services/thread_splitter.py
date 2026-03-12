@@ -258,6 +258,7 @@ async def split_email_threads(
                                 split_from_id=email.id,
                                 is_thread_split=True,
                                 quoted_metadata=[],
+                                timestamp=email.timestamp,
                             )
                             session.add(child)
                             summary["messages_created"] += 1
@@ -268,7 +269,7 @@ async def split_email_threads(
                                 "from_email": msg_from,
                                 "subject": msg_subject,
                                 "body_text": msg_body,
-                                "timestamp": None,
+                                "timestamp": email.timestamp,
                             })
 
                         email.is_thread_split = True

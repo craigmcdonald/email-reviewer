@@ -226,3 +226,20 @@ class TestAuditMixin:
         email = await make_email()
         assert email.created_by == "test"
         assert email.updated_by == "test"
+
+    async def test_context_var_overrides_default_user(self, db, make_email):
+        from app.models.base import set_current_user, _current_user_var
+
+        token = set_current_user("custom_user")
+        try:
+            email = await make_email(hubspot_id="ctx_test_1")
+            assert email.created_by == "custom_user"
+            assert email.updated_by == "custom_user"
+        finally:
+            _current_user_var.reset(token)
+
+    async def test_defaults_to_env_var_when_no_context_set(self, db, make_email):
+        # With CURRENT_USER=test in pytest.ini, and no explicit context var set,
+        # the middleware (or env fallback) should provide "test"
+        email = await make_email(hubspot_id="default_test_1")
+        assert email.created_by == "test"

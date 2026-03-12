@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.models.chain import EmailChain
 from app.models.chain_score import ChainScore
 from app.models.email import Email
-from app.services.chain_builder import build_chains, normalize_subject
+from app.services.chain_builder import build_chains, normalize_subject, update_chains_for_emails
 
 
 class TestNormalizeSubject:
@@ -848,3 +848,371 @@ class TestQuotedContentMatching:
         await db.refresh(e3)
         assert e1.chain_id is not None
         assert e3.chain_id == e1.chain_id
+
+
+class TestUpdateChainsForEmails:
+    async def test_new_reply_joins_existing_chain(self, db, make_email):
+        """A new incoming email via in_reply_to should join an existing chain."""
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Topic",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Topic",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        # Build initial chains
+        await build_chains(db)
+        await db.commit()
+
+        await db.refresh(e1)
+        original_chain_id = e1.chain_id
+        assert original_chain_id is not None
+
+        # Add a new reply
+        e3 = await make_email(
+            message_id="<c@x.com>",
+            in_reply_to="<b@x.com>",
+            subject="Re: Re: Topic",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 12, 0),
+        )
+        await db.commit()
+
+        result = await update_chains_for_emails(db, {e3.id})
+        await db.commit()
+
+        await db.refresh(e1)
+        await db.refresh(e2)
+        await db.refresh(e3)
+        # All three should be in the same chain
+        assert e1.chain_id == e2.chain_id == e3.chain_id
+        # The chain ID should be preserved from the original build
+        assert e1.chain_id == original_chain_id
+
+    async def test_preserves_chain_score(self, db, make_email):
+        """Existing chain scores should survive incremental updates."""
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Campaign",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Campaign",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        # Add a chain score
+        chain_result = await db.execute(select(EmailChain))
+        chain = chain_result.scalar_one()
+        score = ChainScore(
+            chain_id=chain.id,
+            progression=8, responsiveness=7,
+            persistence=6, conversation_quality=9,
+            scored_at=datetime(2025, 1, 2),
+        )
+        db.add(score)
+        await db.commit()
+
+        # Add a new email to the chain
+        e3 = await make_email(
+            message_id="<c@x.com>",
+            in_reply_to="<b@x.com>",
+            subject="Re: Re: Campaign",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 2, 10, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e3.id})
+        await db.commit()
+
+        # Chain score should still exist
+        score_result = await db.execute(
+            select(ChainScore).where(ChainScore.chain_id == chain.id)
+        )
+        preserved = score_result.scalar_one_or_none()
+        assert preserved is not None
+        assert preserved.progression == 8
+        assert preserved.conversation_quality == 9
+
+    async def test_preserves_unrelated_chains(self, db, make_email):
+        """Chains not touched by new emails remain unchanged."""
+        # Chain 1
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Topic A",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Topic A",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        await db.refresh(e1)
+        chain_a_id = e1.chain_id
+        assert chain_a_id is not None
+
+        # Add score to chain A
+        score_a = ChainScore(
+            chain_id=chain_a_id,
+            progression=7, responsiveness=8,
+            persistence=5, conversation_quality=6,
+            scored_at=datetime(2025, 1, 2),
+        )
+        db.add(score_a)
+        await db.commit()
+
+        # New emails forming a completely separate chain
+        e3 = await make_email(
+            message_id="<x@y.com>",
+            subject="Topic B",
+            from_email="carol@test.com",
+            to_email="dave@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 2, 1, 10, 0),
+        )
+        e4 = await make_email(
+            message_id="<y@y.com>",
+            in_reply_to="<x@y.com>",
+            subject="Re: Topic B",
+            from_email="dave@other.com",
+            to_email="carol@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 2, 1, 11, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e3.id, e4.id})
+        await db.commit()
+
+        # Chain A should be completely untouched
+        await db.refresh(e1)
+        await db.refresh(e2)
+        assert e1.chain_id == chain_a_id
+        assert e2.chain_id == chain_a_id
+
+        # Chain A score should be preserved
+        score_result = await db.execute(
+            select(ChainScore).where(ChainScore.chain_id == chain_a_id)
+        )
+        assert score_result.scalar_one_or_none() is not None
+
+        # New chain B should be created
+        await db.refresh(e3)
+        await db.refresh(e4)
+        assert e3.chain_id is not None
+        assert e3.chain_id == e4.chain_id
+        assert e3.chain_id != chain_a_id
+
+    async def test_creates_new_chain_from_new_emails(self, db, make_email):
+        """When new emails form a new group, a new chain is created."""
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Hello",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Hello",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        result = await update_chains_for_emails(db, {e1.id, e2.id})
+        await db.commit()
+
+        await db.refresh(e1)
+        await db.refresh(e2)
+        assert e1.chain_id is not None
+        assert e1.chain_id == e2.chain_id
+        assert result["chains_created"] >= 1
+
+    async def test_updates_chain_metadata(self, db, make_email):
+        """Chain metadata (email_count, last_activity_at, etc.) updated when email added."""
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Topic",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Topic",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        chain_result = await db.execute(select(EmailChain))
+        chain = chain_result.scalar_one()
+        assert chain.email_count == 2
+        original_chain_id = chain.id
+
+        # Add new email to chain
+        e3 = await make_email(
+            message_id="<c@x.com>",
+            in_reply_to="<b@x.com>",
+            subject="Re: Re: Topic",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 2, 10, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e3.id})
+        await db.commit()
+
+        # Re-fetch chain and check metadata
+        chain_result = await db.execute(
+            select(EmailChain).where(EmailChain.id == original_chain_id)
+        )
+        chain = chain_result.scalar_one()
+        assert chain.email_count == 3
+        assert chain.outgoing_count == 2
+        assert chain.incoming_count == 1
+        assert chain.last_activity_at == datetime(2025, 1, 2, 10, 0)
+        assert chain.is_unanswered is False
+
+    async def test_thread_id_matching(self, db, make_email):
+        """New email matched by thread_id joins existing chain."""
+        e1 = await make_email(
+            thread_id="thread-abc",
+            subject="Hello",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            thread_id="thread-abc",
+            subject="Re: Hello",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        await db.refresh(e1)
+        original_chain_id = e1.chain_id
+
+        e3 = await make_email(
+            thread_id="thread-abc",
+            subject="Re: Re: Hello",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 12, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e3.id})
+        await db.commit()
+
+        await db.refresh(e3)
+        assert e3.chain_id == original_chain_id
+
+    async def test_subject_matching(self, db, make_email):
+        """New email matched by subject + participant overlap joins existing chain."""
+        e1 = await make_email(
+            subject="Meeting Follow-up",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            subject="Re: Meeting Follow-up",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 5, 10, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        await db.refresh(e1)
+        original_chain_id = e1.chain_id
+
+        e3 = await make_email(
+            subject="Re: Meeting Follow-up",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 10, 10, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e3.id})
+        await db.commit()
+
+        await db.refresh(e3)
+        assert e3.chain_id == original_chain_id
+
+    async def test_empty_email_ids_no_op(self, db):
+        """Passing empty set of IDs returns immediately."""
+        result = await update_chains_for_emails(db, set())
+        assert result["chains_created"] == 0
+        assert result["chains_updated"] == 0
+        assert result["emails_linked"] == 0
