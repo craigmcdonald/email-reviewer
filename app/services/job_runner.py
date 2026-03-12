@@ -2,7 +2,7 @@
 
 import logging
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import delete, func, select
@@ -17,7 +17,7 @@ from app.models.email import Email
 from app.models.job import Job
 from app.models.rep import Rep
 from app.models.score import Score
-from app.services.chain_builder import build_chains
+from app.services.chain_builder import rebuild_all_chains, update_chains_for_emails
 from app.services.classifier import classify_emails
 from app.services.export import export_to_excel
 from app.services.fetcher import fetch_and_store
@@ -109,14 +109,18 @@ async def run_fetch_job(
                     fetch_start_date, datetime.min.time()
                 )
             else:
-                max_fetched = await s.execute(select(func.max(Email.fetched_at)))
-                max_fetched_at = max_fetched.scalar_one_or_none()
+                max_ts_result = await s.execute(
+                    select(func.max(Email.timestamp))
+                )
+                max_timestamp = max_ts_result.scalar_one_or_none()
 
                 global_start = datetime.combine(
                     settings.global_start_date, datetime.min.time()
                 )
-                if max_fetched_at and max_fetched_at > global_start:
-                    effective_start = max_fetched_at
+                if max_timestamp and max_timestamp > global_start:
+                    # Overlap by 1 hour to catch emails created between cycles.
+                    # The upsert deduplicates on hubspot_id, so re-fetching is safe.
+                    effective_start = max_timestamp - timedelta(hours=1)
                 else:
                     effective_start = global_start
 
@@ -136,6 +140,10 @@ async def run_fetch_job(
             )
             reps_before = reps_before_result.scalar_one()
 
+            # Snapshot existing email IDs so we can identify new ones after fetch
+            existing_ids_result = await s.execute(select(Email.id))
+            existing_email_ids = {row[0] for row in existing_ids_result.all()}
+
             fetched_count = await fetch_and_store(
                 s,
                 access_token=app_config.HUBSPOT_ACCESS_TOKEN,
@@ -147,6 +155,12 @@ async def run_fetch_job(
                 select(func.count()).select_from(Rep)
             )
             new_reps_count = reps_after_result.scalar_one() - reps_before
+
+            # Identify newly created email IDs
+            all_ids_result = await s.execute(select(Email.id))
+            all_email_ids = {row[0] for row in all_ids_result.all()}
+            new_email_ids = all_email_ids - existing_email_ids
+
             await s.commit()
 
             summary: dict = {"fetched": fetched_count, "new_reps": new_reps_count}
@@ -160,18 +174,10 @@ async def run_fetch_job(
                 logger.exception("Fetch job %d: classify stage failed", job_id)
                 stage_errors.append(f"classify: {exc}")
 
-            # Stage 2.5: Split email threads
+            # Stage 3: Incrementally update conversation chains for new emails
             try:
-                split_result = await split_email_threads(s)
-                summary["threads_split"] = split_result.get("threads_split", 0)
-                summary["messages_extracted"] = split_result.get("messages_created", 0)
-            except Exception as exc:
-                logger.exception("Fetch job %d: thread split stage failed", job_id)
-                stage_errors.append(f"thread_split: {exc}")
-
-            # Stage 3: Build conversation chains
-            try:
-                await build_chains(s)
+                if new_email_ids:
+                    await update_chains_for_emails(s, new_email_ids)
                 await s.commit()
             except Exception as exc:
                 logger.exception("Fetch job %d: chain build stage failed", job_id)
@@ -248,12 +254,25 @@ async def run_rescore_job(
             _set_running(job)
             await s.commit()
 
-            # Delete all existing scores and chain scores
-            await s.execute(delete(ChainScore))
-            await s.execute(delete(Score))
-            await s.flush()
-
             settings = await get_settings(s)
+
+            # Delete chain scores first (re-derived from email scores)
+            await s.execute(delete(ChainScore))
+            await s.commit()
+
+            # Delete email scores in committed batches to bound crash exposure.
+            # If the process crashes, at most one batch of scores is lost rather
+            # than the entire corpus.
+            RESCORE_DELETE_BATCH = 100
+            scored_ids_result = await s.execute(select(Score.email_id))
+            all_scored_ids = [row[0] for row in scored_ids_result.all()]
+            for i in range(0, len(all_scored_ids), RESCORE_DELETE_BATCH):
+                batch_ids = all_scored_ids[i : i + RESCORE_DELETE_BATCH]
+                await s.execute(
+                    delete(Score).where(Score.email_id.in_(batch_ids))
+                )
+                await s.commit()
+
             score_result = await score_unscored_emails(
                 s, batch_size=settings.scoring_batch_size
             )
@@ -328,8 +347,8 @@ async def run_chain_build_job(
                 logger.exception("Chain build job %d: thread split stage failed", job_id)
                 stage_errors.append(f"thread_split: {exc}")
 
-            # Stage 3: Build conversation chains
-            chain_result = await build_chains(s)
+            # Stage 3: Full rebuild of conversation chains
+            chain_result = await rebuild_all_chains(s)
             summary.update(chain_result)
 
             if stage_errors:

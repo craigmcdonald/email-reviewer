@@ -74,6 +74,7 @@ def _build_standalone_filters(
     filters = [
         Email.direction == EmailDirection.EMAIL.value,
         Email.chain_id.is_(None),
+        Score.score_error.is_(False),
     ]
     if rep_email:
         filters.append(Email.from_email == rep_email)
@@ -145,7 +146,7 @@ def _chain_latest_score_subq():
             ).label("rn"),
         )
         .join(Score, Score.email_id == Email.id)
-        .where(Email.chain_id.isnot(None))
+        .where(Email.chain_id.isnot(None), Score.score_error.is_(False))
         .subquery()
     )
     return (
