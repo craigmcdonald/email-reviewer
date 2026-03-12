@@ -72,18 +72,18 @@ class TestRespTimeBarClass:
 
 class TestTeamPageRendering:
     async def test_trend_cards_present(self, client):
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert resp.status_code == 200
         assert "Outreach Score" in resp.text
         assert "Reply Rate" in resp.text
         assert "Avg Response Time" in resp.text
 
     async def test_rolling_30_days_label(self, client):
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "Rolling 30 days" in resp.text
 
     async def test_column_group_headers(self, client):
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "group-outreach" in resp.text
         assert "group-conversations" in resp.text
 
@@ -98,7 +98,7 @@ class TestTeamPageRendering:
         )
         await make_score(email_id=e.id, overall=7, scored_at=_recent())
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "rep-avatar" in resp.text
         assert "JS" in resp.text
 
@@ -113,7 +113,7 @@ class TestTeamPageRendering:
                 timestamp=_recent(),
             )
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert resp.status_code == 200
         # 3/30 = 0.1
         assert "0.1" in resp.text
@@ -131,14 +131,14 @@ class TestTeamPageRendering:
             chain_id=chain.id,
         )
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "unanswered-some" in resp.text
 
     async def test_unanswered_zero_muted(
         self, client, make_rep
     ):
         await make_rep(email="rep@x.com", display_name="Rep One")
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "unanswered-zero" in resp.text
 
     async def test_reply_rate_bar_rendered(
@@ -155,11 +155,11 @@ class TestTeamPageRendering:
             chain_id=chain.id,
         )
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "ratio-bar-fill" in resp.text
 
     async def test_no_reps_shows_empty_state(self, client):
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "No reps found" in resp.text
 
     async def test_score_color_classes_applied(
@@ -173,7 +173,7 @@ class TestTeamPageRendering:
         )
         await make_score(email_id=e.id, overall=9, scored_at=_recent())
 
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "score-high" in resp.text
 
     async def test_type_badge_class_applied(
@@ -182,17 +182,17 @@ class TestTeamPageRendering:
         await make_rep(
             email="rep@x.com", display_name="Rep", rep_type="SDR"
         )
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "badge-sdr" in resp.text
 
     async def test_sparkline_svg_rendered(self, client):
-        resp = await client.get("/")
+        resp = await client.get("/team")
         assert "trend-sparkline" in resp.text
 
     async def test_dash_shown_for_null_metrics(
         self, client, make_rep
     ):
         await make_rep(email="rep@x.com", display_name="Empty Rep")
-        resp = await client.get("/")
+        resp = await client.get("/team")
         # Null metrics render as em-dash
         assert "\u2014" in resp.text or "—" in resp.text
