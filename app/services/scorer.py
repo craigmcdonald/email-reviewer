@@ -154,7 +154,7 @@ async def _build_follow_up_context(session: AsyncSession, email: Email) -> str:
         .where(Email.from_email == email.from_email)
         .where(Email.to_email == email.to_email)
         .where(Email.chain_id.is_(None))
-        .order_by(Email.timestamp.asc())
+        .order_by(Email.timestamp.asc(), Email.id.asc())
     )
     result = await session.execute(stmt)
     candidates = result.scalars().all()

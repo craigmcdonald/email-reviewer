@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app.models.chain import EmailChain
+from app.models.chain_score import ChainScore
 from app.models.email import Email
 from app.services.chain_builder import build_chains, normalize_subject
 
@@ -660,6 +661,84 @@ class TestBuildChainsIdempotency:
         await db.refresh(e2)
         assert e1.chain_id is not None
         assert e1.chain_id == e2.chain_id
+
+
+class TestChainScorePreservationAcrossParticipantChange:
+    async def test_score_preserved_when_new_participant_joins(
+        self, db, make_email, make_chain_score
+    ):
+        """When a new participant joins an existing thread, the participants
+        string changes on rebuild. The chain score should still be reattached
+        using normalized_subject as a fallback key."""
+        # First run: two-email chain between alice and bob
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Campaign",
+            from_email="alice@test.com",
+            to_email="bob@other.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Campaign",
+            from_email="bob@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 11, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        # Get the chain and attach a score
+        chain_result = await db.execute(select(EmailChain))
+        chain = chain_result.scalar_one()
+        original_chain_id = chain.id
+
+        chain_score = ChainScore(
+            chain_id=chain.id,
+            progression=8,
+            responsiveness=7,
+            persistence=6,
+            conversation_quality=9,
+            scored_at=datetime(2025, 1, 2),
+        )
+        db.add(chain_score)
+        await db.commit()
+
+        # Now a new participant (carol) joins the thread
+        e3 = await make_email(
+            message_id="<c@x.com>",
+            in_reply_to="<b@x.com>",
+            subject="Re: Re: Campaign",
+            from_email="carol@other.com",
+            to_email="alice@test.com",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 2, 10, 0),
+        )
+        await db.commit()
+
+        # Rebuild chains - participants string now includes carol
+        await build_chains(db)
+        await db.commit()
+
+        # The chain should exist and the score should be preserved
+        chain_result = await db.execute(select(EmailChain))
+        new_chain = chain_result.scalar_one()
+        assert new_chain.email_count == 3
+
+        score_result = await db.execute(
+            select(ChainScore).where(ChainScore.chain_id == new_chain.id)
+        )
+        preserved_score = score_result.scalar_one_or_none()
+        assert preserved_score is not None, (
+            "Chain score was lost when a new participant joined the thread"
+        )
+        assert preserved_score.progression == 8
+        assert preserved_score.conversation_quality == 9
 
 
 class TestAutoReplyExclusion:

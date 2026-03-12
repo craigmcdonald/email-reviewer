@@ -114,6 +114,15 @@ class TestConflictPrevention:
         resp = await client.post("/api/operations/score")
         assert resp.status_code == 409
 
+    @patch("app.routers.operations.run_export_job", new_callable=AsyncMock)
+    async def test_export_rejects_when_export_running(self, mock_run, client, db, make_job):
+        await make_job(
+            job_type=JobType.EXPORT, status=JobStatus.RUNNING
+        )
+        await db.commit()
+        resp = await client.post("/api/operations/export")
+        assert resp.status_code == 409
+
 
 class TestJobResponseShape:
     async def test_jobs_include_result_summary_and_timestamps(

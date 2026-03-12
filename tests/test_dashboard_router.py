@@ -239,6 +239,16 @@ class TestRepDetailPage:
         )
         assert resp.status_code == 200
 
+    async def test_invalid_score_min_returns_422_not_500(
+        self, client, make_rep
+    ):
+        await make_rep(email="alice@example.com", display_name="Alice")
+        resp = await client.get(
+            "/reps/alice@example.com",
+            params={"o_score_min": "abc"},
+        )
+        assert resp.status_code != 500
+
     async def test_rep_detail_shows_outreach_heading(
         self, client, make_rep, make_email, make_score
     ):

@@ -36,7 +36,7 @@ def validate_redis() -> str | None:
         conn.ping()
     except Exception:
         return (
-            f"REDIS_URL is configured ({settings.REDIS_URL}) but Redis is not reachable. "
+            "REDIS_URL is configured but Redis is not reachable. "
             "Either start Redis or remove REDIS_URL from .env to run jobs in-process."
         )
 
@@ -47,7 +47,7 @@ def validate_redis() -> str | None:
     if not queue_workers:
         return (
             f"Redis is reachable but no workers are listening on the '{QUEUE_NAME}' queue. "
-            f"Start a worker with: rq worker --url {settings.REDIS_URL} {QUEUE_NAME}"
+            f"Start a worker with: rq worker {QUEUE_NAME}"
         )
 
     return None

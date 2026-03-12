@@ -175,20 +175,35 @@ async def build_chains(session: AsyncSession) -> dict:
         for c in chain_result.unique().scalars().all():
             existing_chains[c.id] = c
 
-    # Preserve chain scores keyed by (normalized_subject, participants) so they
-    # survive the chain delete-and-recreate cycle.
-    saved_scores: dict[tuple[str, str], ChainScore] = {}
+    # Preserve chain score data so it survives the chain delete-and-recreate
+    # cycle. Stored as plain dicts keyed by (normalized_subject, participants),
+    # with a secondary index by normalized_subject alone as a fallback when
+    # participants change (e.g. a new person joins the thread).
+    saved_scores: dict[tuple[str, str], dict] = {}
+    saved_scores_by_subject: dict[str, dict | None] = {}
     for chain in existing_chains.values():
         if chain.chain_score is not None:
             score = chain.chain_score
             key = (chain.normalized_subject or "", chain.participants or "")
-            # Detach the score from the chain so cascade delete doesn't remove it
-            chain.chain_score = None
-            score.chain_id = None  # temporarily orphan
-            saved_scores[key] = score
-    await session.flush()
+            ns = chain.normalized_subject or ""
+            score_data = {
+                "progression": score.progression,
+                "responsiveness": score.responsiveness,
+                "persistence": score.persistence,
+                "conversation_quality": score.conversation_quality,
+                "avg_response_hours": score.avg_response_hours,
+                "notes": score.notes,
+                "score_error": score.score_error,
+                "scored_at": score.scored_at,
+            }
+            saved_scores[key] = score_data
+            if ns not in saved_scores_by_subject:
+                saved_scores_by_subject[ns] = score_data
+            else:
+                # Multiple chains share the same subject - fallback is ambiguous
+                saved_scores_by_subject[ns] = None
 
-    # Delete existing chains (scores are already detached)
+    # Delete existing chains (cascade removes chain_scores too)
     for chain in existing_chains.values():
         await session.delete(chain)
     await session.flush()
@@ -236,11 +251,24 @@ async def build_chains(session: AsyncSession) -> dict:
         session.add(chain)
         await session.flush()
 
-        # Re-associate a saved chain score if one matches
+        # Re-create a chain score from saved data if one matches. Try exact
+        # key first, then fall back to normalized_subject alone to handle
+        # participant changes.
         score_key = (chain.normalized_subject or "", chain.participants or "")
-        if score_key in saved_scores:
-            saved_score = saved_scores.pop(score_key)
-            saved_score.chain_id = chain.id
+        ns = chain.normalized_subject or ""
+        score_data = saved_scores.pop(score_key, None)
+        if score_data is None and ns in saved_scores_by_subject:
+            candidate = saved_scores_by_subject.pop(ns, None)
+            if candidate is not None:
+                score_data = candidate
+                # Remove from the primary dict so it's not left over
+                for k, v in list(saved_scores.items()):
+                    if v is score_data:
+                        saved_scores.pop(k)
+                        break
+        if score_data is not None:
+            restored_score = ChainScore(chain_id=chain.id, **score_data)
+            session.add(restored_score)
 
         chains_created += 1
 
@@ -254,10 +282,6 @@ async def build_chains(session: AsyncSession) -> dict:
         if e.is_auto_reply and e.chain_id is not None:
             e.chain_id = None
             e.position_in_chain = None
-
-    # Delete orphaned scores whose chains no longer exist
-    for orphaned_score in saved_scores.values():
-        await session.delete(orphaned_score)
 
     await session.flush()
 
