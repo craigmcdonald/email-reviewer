@@ -770,19 +770,26 @@ class TestFeedScoreLabels:
         assert "label: 'Value Prop'" in resp.text
         assert "label: 'CTA'" in resp.text
 
-    async def test_thread_score_badges_use_full_labels(self, client):
+    async def test_thread_score_grid_uses_full_labels(self, client):
         resp = await client.get("/feed")
         assert resp.status_code == 200
-        assert "scoreBadgeHtml('Personalisation'" in resp.text
-        assert "scoreBadgeHtml('Clarity'" in resp.text
-        assert "scoreBadgeHtml('Value Prop'" in resp.text
-        assert "scoreBadgeHtml('CTA'" in resp.text
+        assert "scoreGridCellHtml('Personalisation'" in resp.text
+        assert "scoreGridCellHtml('Clarity'" in resp.text
+        assert "scoreGridCellHtml('Value Prop'" in resp.text
+        assert "scoreGridCellHtml('CTA'" in resp.text
 
-    async def test_thread_score_badges_include_overall(self, client):
-        """Overall score should appear with the dimension badges, not isolated in the header."""
+    async def test_thread_overall_score_not_duplicated(self, client):
+        """Overall score should only appear in the score grid, not also in the thread header."""
         resp = await client.get("/feed")
         assert resp.status_code == 200
-        assert "scoreBadgeHtml('Overall'" in resp.text
+        # Overall is in the score grid, not rendered separately via thread-score in the header
+        assert "thread-score" not in resp.text
+
+    async def test_score_grid_uses_full_width_layout(self, client):
+        """Score grid should use a full-width grid layout, not clustered badge pills."""
+        resp = await client.get("/feed")
+        assert resp.status_code == 200
+        assert "score-grid" in resp.text
 
 
 class TestFeedThreadDetail:
