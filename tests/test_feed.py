@@ -645,8 +645,44 @@ class TestFeedRoute:
 
     async def test_feed_nav_active_state(self, client):
         resp = await client.get("/feed")
-        # Feed nav link should have active indicator
-        assert "Feed" in resp.text
+        # Inbox nav link should have active indicator
+        assert "Inbox" in resp.text
+
+    async def test_feed_page_nav_shows_inbox_not_feed(self, client):
+        resp = await client.get("/feed")
+        nav_html = resp.text.split("<nav")[1].split("</nav>")[0]
+        assert "Inbox" in nav_html
+        assert ">Feed<" not in nav_html
+
+    async def test_feed_page_nav_order_inbox_team_settings(self, client):
+        resp = await client.get("/feed")
+        nav_html = resp.text.split("<nav")[1].split("</nav>")[0]
+        inbox_pos = nav_html.index("Inbox")
+        team_pos = nav_html.index("Team")
+        settings_pos = nav_html.index("Settings")
+        assert inbox_pos < team_pos < settings_pos
+
+    async def test_feed_page_no_unanswered_dots(
+        self, client, make_rep, make_email, make_score, make_chain
+    ):
+        await make_rep(email="rep@co.com", display_name="Rep", rep_type="SDR")
+        chain = await make_chain(
+            normalized_subject="Unanswered Thread",
+            last_activity_at=_ts(1),
+            is_unanswered=True,
+            email_count=1,
+        )
+        e = await make_email(
+            from_email="rep@co.com",
+            direction=EmailDirection.EMAIL.value,
+            timestamp=_ts(1),
+            chain_id=chain.id,
+        )
+        await make_score(email_id=e.id, overall=5, scored_at=_ts(1))
+
+        resp = await client.get("/feed")
+        assert resp.status_code == 200
+        assert "unanswered-dot" not in resp.text
 
 
 class TestFeedNavigation:
@@ -657,6 +693,20 @@ class TestFeedNavigation:
     async def test_settings_page_has_feed_link(self, client):
         resp = await client.get("/settings")
         assert 'href="/feed"' in resp.text
+
+    async def test_team_page_nav_shows_inbox_not_feed(self, client):
+        resp = await client.get("/")
+        nav_html = resp.text.split("<nav")[1].split("</nav>")[0]
+        assert "Inbox" in nav_html
+        assert ">Feed<" not in nav_html
+
+    async def test_nav_order_inbox_team_settings(self, client):
+        resp = await client.get("/")
+        nav_html = resp.text.split("<nav")[1].split("</nav>")[0]
+        inbox_pos = nav_html.index("Inbox")
+        team_pos = nav_html.index("Team")
+        settings_pos = nav_html.index("Settings")
+        assert inbox_pos < team_pos < settings_pos
 
 
 class TestFeedMasterDetail:

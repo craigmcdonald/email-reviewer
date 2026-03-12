@@ -21,7 +21,7 @@ async def get_chain_detail(session: AsyncSession, chain_id: int) -> dict | None:
     if not chain:
         return None
 
-    sorted_emails = sorted(chain.emails, key=lambda e: (e.timestamp or e.created_at,))
+    sorted_emails = sorted(chain.emails, key=lambda e: (e.timestamp or e.created_at,), reverse=True)
     cs = chain.chain_score
 
     return {
