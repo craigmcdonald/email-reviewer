@@ -31,9 +31,9 @@
 .feed-filter-secondary select { border: 1px solid #dde0e4; border-radius: 8px; padding: 5px 8px; font-size: 13px; background: #fff; color: #1a1a2e; outline: none; }
 .feed-filter-dash { color: #9ca3af; font-size: 12px; }
 
-/* Split layout — detail panel is the primary reading area (55%), list is navigation (45%) */
+/* Split layout — detail panel is the primary reading area (65%), list is navigation (35%) */
 .feed-split { display: flex; gap: 24px; align-items: stretch; flex: 1; min-height: 0; }
-.feed-list-col { flex: 0 0 44%; min-width: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
+.feed-list-col { flex: 0 0 35%; min-width: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
 .feed-detail-panel { flex: 1; min-width: 0; background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); overflow: hidden; display: none; }
 @media (min-width: 1101px) { .feed-detail-panel { display: flex; flex-direction: column; } .expand-panel, .thread-panel { display: none !important; } .feed-item.expanded > .feed-row { background: #eef2ff; border-left: 3px solid #4f46e5; } .feed-preview { display: none; } }
 @media (max-width: 1100px) { .feed-split { display: block; } .feed-container { height: auto; } .feed-list-col { flex: 1; } }
@@ -45,8 +45,8 @@
 .detail-placeholder { padding: 48px 28px; text-align: center; color: #9ca3af; font-size: 14px; }
 .detail-content { display: none; overflow-y: auto; flex: 1; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
 .score-tiles { display: flex; gap: 0; padding: 0; border-top: 1px solid #f0f1f3; border-bottom: 1px solid #f0f1f3; }
-.score-tile { flex: 1; padding: 16px 8px; text-align: center; }
-.score-tile-label { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.score-tile { flex: 1; padding: 16px 10px; text-align: center; }
+.score-tile-label { font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px; }
 .score-tile-value { font-size: 28px; font-weight: 700; }
 .detail-section { padding: 0 28px 20px; }
 .detail-section:first-of-type { padding-top: 20px; }
@@ -55,8 +55,8 @@
 .detail-body-text { font-size: 14px; color: #374151; white-space: pre-wrap; font-family: inherit; line-height: 1.65; margin: 0; }
 
 /* Inline score badges for thread emails */
-.score-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
-.score-badge-pill { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
+.score-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.score-badge-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
 .score-badge-pill.badge-high { background: #dcfce7; color: #16a34a; }
 .score-badge-pill.badge-mid { background: #fef9c3; color: #ca8a04; }
 .score-badge-pill.badge-low { background: #fee2e2; color: #dc2626; }
@@ -65,7 +65,7 @@
 .detail-full-link:hover { color: #4f46e5; text-decoration: underline; }
 
 /* Feed items */
-.feed-list { display: flex; flex-direction: column; gap: 8px; }
+.feed-list { display: flex; flex-direction: column; gap: 10px; }
 .feed-item { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03); overflow: hidden; transition: box-shadow 0.15s; }
 .feed-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04); }
 .feed-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; transition: background 0.1s; }
@@ -99,28 +99,28 @@
 .full-email-link:hover { color: #4f46e5; text-decoration: underline; }
 
 /* Expanded: thread */
-.thread-panel { display: none; padding: 8px 16px 16px 16px; }
+.thread-panel { display: none; padding: 12px 20px 20px 20px; }
 .feed-item.expanded .thread-panel { display: block; }
 .thread { position: relative; padding-left: 30px; }
 .thread::before { content: ""; position: absolute; left: 16px; top: 0; bottom: 0; width: 2px; background: #e8eaed; border-radius: 1px; }
-.thread-email { position: relative; margin-bottom: 16px; }
+.thread-email { position: relative; margin-bottom: 24px; }
 .thread-email:last-child { margin-bottom: 0; }
 .thread-node { position: absolute; left: -22px; top: 14px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; z-index: 1; }
 .node-outgoing { background: transparent; }
 .node-incoming { background: transparent; }
-.thread-card { background: #fff; border: 1px solid #eef0f3; border-radius: 8px; padding: 12px 14px; }
+.thread-card { background: #fff; border: 1px solid #eef0f3; border-radius: 8px; padding: 16px 18px; }
 .thread-card.outgoing { border-left: 3px solid #4f46e5; }
 .thread-card.incoming { border-left: 3px solid #d1d5db; }
-.thread-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px; }
+.thread-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
 .thread-from { font-size: 12px; font-weight: 600; color: #1a1a2e; }
 .thread-direction { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 3px; }
 .dir-sent { background: #eef2ff; color: #4f46e5; }
 .dir-received { background: #f3f4f6; color: #6b7280; }
 .thread-time { font-size: 11px; color: #9ca3af; }
 .thread-score { font-size: 12px; font-weight: 700; }
-.thread-body-scroll { max-height: 120px; overflow-y: auto; margin-top: 6px; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
+.thread-body-scroll { max-height: 120px; overflow-y: auto; margin-top: 10px; scrollbar-width: thin; scrollbar-color: #d4d4d8 transparent; }
 .thread-body { font-size: 12px; color: #4b5563; white-space: pre-wrap; font-family: inherit; line-height: 1.5; }
-.thread-ai-notes { margin-top: 8px; border-left: 2px solid #4f46e5; padding: 6px 8px; font-size: 12px; color: #3b1f8e; line-height: 1.4; background: #f9f8fe; border-radius: 0 4px 4px 0; }
+.thread-ai-notes { margin-top: 12px; border-left: 2px solid #4f46e5; padding: 10px 12px; font-size: 12px; color: #3b1f8e; line-height: 1.5; background: #f9f8fe; border-radius: 0 4px 4px 0; }
 
 /* Date separator */
 .date-sep { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
@@ -522,9 +522,9 @@ function showDetailPanel(el) {
         var tiles = document.getElementById('detail-score-tiles');
         tiles.innerHTML = scoreTileHtml([
             {label: 'Overall', val: el.dataset.score},
-            {label: 'Pers.', val: el.dataset.scorePersonalisation},
+            {label: 'Personalisation', val: el.dataset.scorePersonalisation},
             {label: 'Clarity', val: el.dataset.scoreClarity},
-            {label: 'Value', val: el.dataset.scoreValueProposition},
+            {label: 'Value Prop', val: el.dataset.scoreValueProposition},
             {label: 'CTA', val: el.dataset.scoreCta}
         ]);
         tiles.style.display = 'flex';
@@ -611,9 +611,10 @@ function loadDetailThread(chainId) {
                 // Score dimension badges for outgoing emails
                 if (isOut && e.score) {
                     html += '<div class="score-badges">';
-                    html += scoreBadgeHtml('P', e.score.personalisation);
-                    html += scoreBadgeHtml('CI', e.score.clarity);
-                    html += scoreBadgeHtml('VP', e.score.value_proposition);
+                    html += scoreBadgeHtml('Overall', e.score.overall);
+                    html += scoreBadgeHtml('Personalisation', e.score.personalisation);
+                    html += scoreBadgeHtml('Clarity', e.score.clarity);
+                    html += scoreBadgeHtml('Value Prop', e.score.value_proposition);
                     html += scoreBadgeHtml('CTA', e.score.cta);
                     html += '</div>';
                 }
@@ -662,9 +663,10 @@ function loadThread(chainId) {
                 // Score dimension badges for outgoing emails
                 if (isOut && e.score) {
                     html += '<div class="score-badges">';
-                    html += scoreBadgeHtml('P', e.score.personalisation);
-                    html += scoreBadgeHtml('CI', e.score.clarity);
-                    html += scoreBadgeHtml('VP', e.score.value_proposition);
+                    html += scoreBadgeHtml('Overall', e.score.overall);
+                    html += scoreBadgeHtml('Personalisation', e.score.personalisation);
+                    html += scoreBadgeHtml('Clarity', e.score.clarity);
+                    html += scoreBadgeHtml('Value Prop', e.score.value_proposition);
                     html += scoreBadgeHtml('CTA', e.score.cta);
                     html += '</div>';
                 }
