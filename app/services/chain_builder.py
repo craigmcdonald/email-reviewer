@@ -550,7 +550,7 @@ async def update_chains_for_emails(
                 min_ts = min(timestamps) - timedelta(days=30)
                 max_ts = max(timestamps) + timedelta(days=30)
                 subject_neighbor_result = await session.execute(
-                    select(Email.id, Email.from_email, Email.to_email, Email.timestamp)
+                    select(Email.id, Email.from_email, Email.to_email, Email.timestamp, Email.subject)
                     .where(
                         ~Email.id.in_(email_ids),
                         Email.timestamp >= min_ts,
@@ -558,8 +558,10 @@ async def update_chains_for_emails(
                     )
                 )
                 for row in subject_neighbor_result.all():
-                    eid, from_email, to_email, ts = row
+                    eid, from_email, to_email, ts, subject = row
                     if eid in neighbor_ids:
+                        continue
+                    if normalize_subject(subject) != ns:
                         continue
                     candidate_participants = set()
                     if from_email:
@@ -630,10 +632,14 @@ async def update_chains_for_emails(
         for c in chain_result.unique().scalars().all():
             existing_chains[c.id] = c
 
-    # Clear chain assignments for affected emails
+    # Clear chain assignments for affected emails and flush so the DB
+    # reflects the cleared FKs. Without this flush, deleting a merged chain
+    # later would trigger SQLAlchemy's relationship handling to re-NULL the
+    # FK on child emails, overriding our new chain_id assignment.
     for e in affected_emails:
         e.chain_id = None
         e.position_in_chain = None
+    await session.flush()
 
     chains_created = 0
     chains_updated = 0
@@ -685,6 +691,12 @@ async def update_chains_for_emails(
                 if other_cid in existing_chains:
                     await session.delete(existing_chains[other_cid])
                     claimed_chain_ids.add(other_cid)
+
+            # When chains merge, the kept chain's score was scored against a
+            # different conversation and is now stale. Delete it so
+            # score_unscored_chains will re-score the merged chain.
+            if len(group_chain_ids) > 1 and chain.chain_score is not None:
+                await session.delete(chain.chain_score)
 
             # Assign emails to the kept chain
             group_emails.sort(key=lambda e: (e.timestamp or datetime.min, e.id))

@@ -156,7 +156,10 @@ async def run_fetch_job(
             )
             new_reps_count = reps_after_result.scalar_one() - reps_before
 
-            # Identify newly created email IDs
+            # Identify newly created email IDs via set difference. Updated
+            # emails (same hubspot_id, changed subject/body) are upserted in
+            # place and won't appear here, so they don't trigger chain
+            # reassignment — an email update shouldn't change chain membership.
             all_ids_result = await s.execute(select(Email.id))
             all_email_ids = {row[0] for row in all_ids_result.all()}
             new_email_ids = all_email_ids - existing_email_ids
@@ -256,10 +259,6 @@ async def run_rescore_job(
 
             settings = await get_settings(s)
 
-            # Delete chain scores first (re-derived from email scores)
-            await s.execute(delete(ChainScore))
-            await s.commit()
-
             # Delete email scores in committed batches to bound crash exposure.
             # If the process crashes, at most one batch of scores is lost rather
             # than the entire corpus.
@@ -272,6 +271,15 @@ async def run_rescore_job(
                     delete(Score).where(Score.email_id.in_(batch_ids))
                 )
                 await s.commit()
+
+            # Delete chain scores after email scores are cleared but before
+            # re-scoring. score_unscored_emails calls score_unscored_chains
+            # internally, which queries for chains without a ChainScore. If
+            # we deleted chain scores before email scores, a crash during
+            # email score deletion would leave all chain scores permanently
+            # lost. This ordering minimises the crash window.
+            await s.execute(delete(ChainScore))
+            await s.commit()
 
             score_result = await score_unscored_emails(
                 s, batch_size=settings.scoring_batch_size
