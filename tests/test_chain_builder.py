@@ -741,6 +741,87 @@ class TestChainScorePreservationAcrossParticipantChange:
         assert preserved_score.conversation_quality == 9
 
 
+class TestAutoReplyEmailCount:
+    async def test_rebuild_email_count_excludes_auto_replies(self, db, make_email):
+        """Chain email_count should not include auto-reply emails that are
+        subsequently unlinked. A chain with 3 emails where one is an auto-reply
+        should report email_count=2, not 3."""
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Hello",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Automatic reply: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            is_auto_reply=True,
+            timestamp=datetime(2025, 1, 1, 10, 5),
+        )
+        e3 = await make_email(
+            message_id="<c@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 12, 0),
+        )
+        await db.commit()
+
+        await build_chains(db)
+        await db.commit()
+
+        result = await db.execute(select(EmailChain))
+        chain = result.scalar_one()
+        # Only e1 and e3 are linked; e2 (auto-reply) is unlinked
+        assert chain.email_count == 2
+
+    async def test_incremental_email_count_excludes_auto_replies(self, db, make_email):
+        """Incremental chain builder should also exclude auto-replies from email_count."""
+        e1 = await make_email(
+            message_id="<a@x.com>",
+            subject="Hello",
+            from_email="rep@native.fm",
+            to_email="prospect@example.com",
+            direction="EMAIL",
+            timestamp=datetime(2025, 1, 1, 10, 0),
+        )
+        e2 = await make_email(
+            message_id="<b@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Automatic reply: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            is_auto_reply=True,
+            timestamp=datetime(2025, 1, 1, 10, 5),
+        )
+        e3 = await make_email(
+            message_id="<c@x.com>",
+            in_reply_to="<a@x.com>",
+            subject="Re: Hello",
+            from_email="prospect@example.com",
+            to_email="rep@native.fm",
+            direction="INCOMING_EMAIL",
+            timestamp=datetime(2025, 1, 1, 12, 0),
+        )
+        await db.commit()
+
+        await update_chains_for_emails(db, {e1.id, e2.id, e3.id})
+        await db.commit()
+
+        result = await db.execute(select(EmailChain))
+        chain = result.scalar_one()
+        assert chain.email_count == 2
+
+
 class TestAutoReplyExclusion:
     async def test_auto_reply_not_counted_as_incoming(self, db, make_email):
         """Auto-reply emails don't count as incoming; group with only outgoing

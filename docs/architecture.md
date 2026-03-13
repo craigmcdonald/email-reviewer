@@ -252,7 +252,7 @@ The entry point is `classify_emails(session, batch_size=10)`. It follows the sam
 
 Classification runs automatically as part of every fetch job (between fetch and chain building). There is no standalone classify endpoint.
 
-Auto-reply and non-sales emails are excluded from scoring and chain building. The chain builder ignores emails with `is_auto_reply=True` when counting incoming emails, determining unanswered status, and computing `last_activity_at`.
+Auto-reply and non-sales emails are excluded from scoring and chain building. The chain builder ignores emails with `is_auto_reply=True` when counting incoming emails, determining unanswered status, computing `last_activity_at`, and computing `email_count`. Auto-reply emails are unlinked from chains after building, and `email_count` reflects only the emails that remain linked.
 
 ## Thread Splitter
 

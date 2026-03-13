@@ -103,12 +103,12 @@ async def get_rep_chains(
     elif status == "answered":
         filters.append(EmailChain.is_unanswered.is_(False))
 
-    # For score filters, join chain_score
+    # For score filters, join chain_score and exclude error scores
     if score_min is not None or score_max is not None:
         base_q = (
             select(EmailChain)
             .join(ChainScore, ChainScore.chain_id == EmailChain.id)
-            .where(*filters)
+            .where(*filters, ChainScore.score_error.is_(False))
             .options(joinedload(EmailChain.chain_score))
         )
         if score_min is not None:

@@ -432,3 +432,35 @@ class TestGetRepEmailsEmailType:
 
         result = await get_rep_emails(db, "rep@x.com", email_type=None)
         assert result["total"] == 2
+
+
+class TestScoreErrorFiltering:
+    """Error-scored emails should not appear in rep views or stats."""
+
+    async def test_get_rep_emails_excludes_score_errors(
+        self, db, make_rep, make_email, make_score
+    ):
+        await make_rep(email="rep@x.com", display_name="Rep")
+        e_good = await make_email(from_email="rep@x.com", subject="Good")
+        await make_score(email_id=e_good.id, overall=7)
+        e_err = await make_email(from_email="rep@x.com", subject="Error")
+        await make_score(email_id=e_err.id, score_error=True)
+
+        result = await get_rep_emails(db, "rep@x.com")
+        assert result["total"] == 1
+        assert result["items"][0].subject == "Good"
+
+    async def test_get_stats_excludes_score_errors(
+        self, db, make_rep, make_email, make_score
+    ):
+        from app.services.rep import get_stats
+
+        await make_rep(email="rep@x.com", display_name="Rep")
+        e_good = await make_email(from_email="rep@x.com", subject="Good")
+        await make_score(email_id=e_good.id, overall=7)
+        e_err = await make_email(from_email="rep@x.com", subject="Error")
+        await make_score(email_id=e_err.id, score_error=True, overall=None)
+
+        stats = await get_stats(db)
+        assert stats["total_scored"] == 1
+        assert stats["avg_overall"] == 7
