@@ -1,7 +1,7 @@
 """add indexes on message_id, in_reply_to, thread_id
 
-Revision ID: g7b8c9d0e1f2
-Revises: f6a7b8c9d0e1
+Revision ID: l2a3b4c5d6e7
+Revises: k1f2a3b4c5d6
 Create Date: 2026-03-12 12:00:00.000000
 
 """
@@ -11,8 +11,8 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'g7b8c9d0e1f2'
-down_revision: Union[str, None] = 'f6a7b8c9d0e1'
+revision: str = 'l2a3b4c5d6e7'
+down_revision: Union[str, None] = 'k1f2a3b4c5d6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
